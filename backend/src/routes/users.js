@@ -11,4 +11,17 @@ r.get('/search', async (req, res) => {
     [q + '%', req.userId]);
   res.json(rows);
 });
+
+// --- AJOUT : Récupérer un utilisateur par son username ---
+r.get('/:username', async (req, res) => {
+  const username = String(req.params.username || '').toLowerCase();
+  const { rows } = await db.query(
+    'SELECT id, username, display_name, country, phone FROM users WHERE username=$1',
+    [username]
+  );
+  if (rows.length === 0) return res.status(404).json({ error: 'Utilisateur introuvable' });
+  res.json(rows[0]);
+});
+// --------------------------------------------------------
+
 module.exports = r;

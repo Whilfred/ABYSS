@@ -90,3 +90,22 @@ ALTER TABLE messages ADD CONSTRAINT messages_type_check
 -- 3. Ajouter les colonnes pour stocker les infos du fichier
 ALTER TABLE messages ADD COLUMN IF NOT EXISTS file_url text;
 ALTER TABLE messages ADD COLUMN IF NOT EXISTS file_name text;
+
+
+-- 1. Table pour les utilisateurs bloqués
+CREATE TABLE IF NOT EXISTS blocked_users (
+  blocker_id uuid REFERENCES users(id) ON DELETE CASCADE,
+  blocked_id uuid REFERENCES users(id) ON DELETE CASCADE,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  PRIMARY KEY (blocker_id, blocked_id)
+);
+
+-- 2. Table pour les signalements (reports)
+CREATE TABLE IF NOT EXISTS reports (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  reporter_id uuid REFERENCES users(id) ON DELETE CASCADE,
+  reported_id uuid REFERENCES users(id) ON DELETE CASCADE,
+  reason text NOT NULL,
+  created_at timestamptz NOT NULL DEFAULT now()
+);
+

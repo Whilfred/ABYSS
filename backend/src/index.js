@@ -21,11 +21,9 @@ const io = new Server(server, { cors: { origin: '*' } });
 app.set('io', io);
 
 // --- AJOUT FICHIERS ---
-// Créer le dossier uploads s'il n'existe pas
 const uploadDir = path.join(__dirname, '../uploads');
 if (!fs.existsSync(uploadDir)) { fs.mkdirSync(uploadDir); }
 
-// Configuration de multer (où et comment sauvegarder)
 const storage = multer.diskStorage({
   destination: (req, file, cb) => cb(null, uploadDir),
   filename: (req, file, cb) => {
@@ -34,7 +32,6 @@ const storage = multer.diskStorage({
   }
 });
 
-// --- MODIFIÉ : Limite passée à 100 Mo ---
 const upload = multer({ storage, limits: { fileSize: 100 * 1024 * 1024 } }); 
 
 io.use((socket, next) => {
@@ -47,11 +44,8 @@ app.use(helmet({ crossOriginResourcePolicy: false }));
 app.use(cors());
 app.use(express.json({ limit: '100kb' }));
 
-// --- AJOUT FICHIERS ---
-// Rendre le dossier uploads accessible publiquement
 app.use('/uploads', express.static(uploadDir));
 
-// Route pour recevoir un fichier
 app.post('/api/upload', upload.single('fichier'), (req, res) => {
   if (!req.file) return res.status(400).json({ error: 'Aucun fichier fourni' });
   res.json({ 
@@ -65,9 +59,9 @@ app.use('/api/auth', rateLimit({ windowMs: 15 * 60 * 1000, max: 50 }), require('
 app.use('/api/users', require('./routes/users'));
 app.use('/api/conversations', require('./routes/chats'));
 app.use('/api/wallet', require('./routes/wallet'));
+app.use('/api/moderation', require('./routes/moderation')); // <--- AJOUT ICI
 app.get('/health', (_, res) => res.json({ ok: true, app: 'ABYSS' }));
 
-// --- MODIFIÉ : Gestion des erreurs (Multer + Global) ---
 app.use((err, req, res, next) => {
   if (err instanceof multer.MulterError) {
     if (err.code === 'LIMIT_FILE_SIZE') {

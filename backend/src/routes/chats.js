@@ -11,12 +11,10 @@ r.get('/', async (req, res) => {
        (SELECT json_build_object('id',u.id,'username',u.username,'display_name',u.display_name)
           FROM conversation_members x JOIN users u ON u.id=x.user_id
           WHERE x.conversation_id=c.id AND x.user_id<>$1 LIMIT 1) AS peer,
-       -- --- MODIFIÉ : Ajout de file_name pour l'aperçu ---
        lm.body, lm.type AS last_type, lm.created_at AS last_at, lm.meta AS last_meta, lm.file_name AS last_file_name,
        (SELECT count(*)::int FROM messages m WHERE m.conversation_id=c.id AND m.sender_id<>$1 AND m.created_at>cm.last_read_at) AS unread
      FROM conversation_members cm
      JOIN conversations c ON c.id=cm.conversation_id
-     -- --- MODIFIÉ : Ajout de file_name dans le LATERAL ---
      LEFT JOIN LATERAL (SELECT body,type,meta,created_at,file_name FROM messages WHERE conversation_id=c.id ORDER BY created_at DESC LIMIT 1) lm ON true
      WHERE cm.user_id=$1
      ORDER BY COALESCE(lm.created_at,c.created_at) DESC`, [req.userId]);
@@ -28,6 +26,15 @@ r.post('/direct', async (req, res) => {
   const peer = (await db.query('SELECT id,username,display_name FROM users WHERE username=$1', [username])).rows[0];
   if (!peer) throw new AppError('Utilisateur introuvable', 404);
   if (peer.id === req.userId) throw new AppError('Conversation impossible avec vous-même');
+
+  // --- AJOUT : Vérifier le blocage ---
+  const blockCheck = await db.query(
+    'SELECT 1 FROM blocked_users WHERE (blocker_id=$1 AND blocked_id=$2) OR (blocker_id=$2 AND blocked_id=$1)',
+    [req.userId, peer.id]
+  );
+  if (blockCheck.rowCount > 0) throw new AppError('Impossible de discuter avec cet utilisateur.', 403);
+  // -----------------------------------
+
   const key = [req.userId, peer.id].sort().join(':');
   const client = await db.connect();
   try {
@@ -87,19 +94,26 @@ r.post('/:id/read', async (req, res) => {
 r.post('/:id/messages', async (req, res) => {
   const { id } = req.params;
   
-  // --- MODIFIÉ : On récupère le type, le fichier, etc. ---
   const type = req.body?.type || 'text';
   const body = String(req.body?.body || '').trim();
   const file_url = req.body?.file_url;
   const file_name = req.body?.file_name;
   const meta = req.body?.meta;
 
-  // --- MODIFIÉ : La validation du texte ne s'applique qu'aux messages textuels ---
   if (type === 'text' && (!body || body.length > 4000)) throw new AppError('Message invalide');
   if (['image', 'file', 'sticker'].includes(type) && !file_url) throw new AppError('Fichier manquant');
   if (!(await isMember(db, id, req.userId))) throw new AppError('Accès refusé', 403);
 
-  // --- MODIFIÉ : On passe les nouvelles infos à createMessage ---
+  // --- AJOUT : Vérifier le blocage avant d'envoyer le message ---
+  const blockCheck = await db.query(
+    `SELECT 1 FROM blocked_users 
+     WHERE (blocker_id=$1 AND blocked_id IN (SELECT user_id FROM conversation_members WHERE conversation_id=$2))
+        OR (blocked_id=$1 AND blocker_id IN (SELECT user_id FROM conversation_members WHERE conversation_id=$2))`,
+    [req.userId, id]
+  );
+  if (blockCheck.rowCount > 0) throw new AppError('Impossible d\'envoyer un message à cet utilisateur.', 403);
+  // -------------------------------------------------------------
+
   const msg = await createMessage(db, { 
     conversationId: id, 
     senderId: req.userId, 
