@@ -109,3 +109,7 @@ CREATE TABLE IF NOT EXISTS reports (
   created_at timestamptz NOT NULL DEFAULT now()
 );
 
+ALTER TABLE users ADD COLUMN avatar_url text;
+ALTER TABLE users ADD COLUMN avatar_url text;
+
+

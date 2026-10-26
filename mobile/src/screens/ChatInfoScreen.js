@@ -4,7 +4,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { api, errMsg, fcfa } from '../api';
 import { SERVER_URL } from '../config';
 import { Avatar } from '../components/UI';
-import { useTheme } from '../ThemeContext'; // <-- Thème dynamique
+import { useTheme } from '../ThemeContext'; 
 import { useAuth } from '../auth';
 
 export default function ChatInfoScreen({ route, navigation }) {
@@ -13,6 +13,7 @@ export default function ChatInfoScreen({ route, navigation }) {
   const { user } = useAuth();
   
   const [msgs, setMsgs] = useState([]);
+  const [peer, setPeer] = useState(null); // <-- NOUVEAU : Stocke les infos du contact
   const [isBlocked, setIsBlocked] = useState(false);
   const [fullImage, setFullImage] = useState(null);
   const [showReport, setShowReport] = useState(false);
@@ -21,14 +22,12 @@ export default function ChatInfoScreen({ route, navigation }) {
     // Charger les messages
     api.get(`/conversations/${id}/messages`).then((r) => setMsgs(r.data.messages)).catch(() => {});
     
-    // Vérifier si l'utilisateur est bloqué (seulement pour les discussions directes)
-    // Note: on utilise peerUsername pour trouver l'ID, mais idéalement il faudrait passer l'ID du peer dans les params.
+    // Charger les infos du contact (pour l'avatar)
     if (type !== 'group' && peerUsername) {
-      // On va chercher l'ID du peer via la route /users
       api.get(`/users/${peerUsername}`).then((res) => {
-        if (res.data && res.data.id) {
-          api.get(`/moderation/blocked/${res.data.id}`).then((r) => setIsBlocked(r.data.is_blocked)).catch(() => {});
-        }
+        setPeer(res.data);
+        // Vérifier le blocage en même temps
+        api.get(`/moderation/blocked/${res.data.id}`).then((r) => setIsBlocked(r.data.is_blocked)).catch(() => {});
       }).catch(() => {});
     }
   }, [id, type, peerUsername]);
@@ -37,7 +36,6 @@ export default function ChatInfoScreen({ route, navigation }) {
   const files = msgs.filter(m => m.type === 'file');
   const links = msgs.filter(m => m.type === 'text' && m.body && m.body.match(/(https?:\/\/[^\s]+)/g));
   
-  // Calcul des statistiques d'argent (basé sur les messages de type 'money')
   let sentAmount = 0;
   let receivedAmount = 0;
   msgs.forEach(m => {
@@ -48,45 +46,33 @@ export default function ChatInfoScreen({ route, navigation }) {
   });
 
   const handleBlock = async () => {
-    if (!peerUsername) return;
+    if (!peer) return;
     try {
-      // Trouver l'ID du peer (on suppose que l'API /users/:username existe)
-      const res = await api.get(`/users/${peerUsername}`);
-      const peerId = res.data.id;
-      
       if (isBlocked) {
-        await api.post('/moderation/unblock', { user_id: peerId });
+        await api.post('/moderation/unblock', { user_id: peer.id });
         setIsBlocked(false);
         Alert.alert('Succès', 'Utilisateur débloqué.');
       } else {
-        Alert.alert(
-          'Bloquer cet utilisateur ?',
-          'Il ne pourra plus vous envoyer de messages.',
-          [
-            { text: 'Annuler', style: 'cancel' },
-            { text: 'Bloquer', style: 'destructive', onPress: async () => {
-                await api.post('/moderation/block', { user_id: peerId });
-                setIsBlocked(true);
-                Alert.alert('Succès', 'Utilisateur bloqué.');
-              }
+        Alert.alert('Bloquer cet utilisateur ?', 'Il ne pourra plus vous envoyer de messages.', [
+          { text: 'Annuler', style: 'cancel' },
+          { text: 'Bloquer', style: 'destructive', onPress: async () => {
+              await api.post('/moderation/block', { user_id: peer.id });
+              setIsBlocked(true);
+              Alert.alert('Succès', 'Utilisateur bloqué.');
             }
-          ]
-        );
+          }
+        ]);
       }
-    } catch (e) {
-      Alert.alert('Erreur', errMsg(e));
-    }
+    } catch (e) { Alert.alert('Erreur', errMsg(e)); }
   };
 
   const handleReport = async (reason) => {
+    if (!peer) return;
     try {
-      const res = await api.get(`/users/${peerUsername}`);
-      await api.post('/moderation/report', { user_id: res.data.id, reason });
+      await api.post('/moderation/report', { user_id: peer.id, reason });
       setShowReport(false);
       Alert.alert('Merci', 'Votre signalement a été transmis.');
-    } catch (e) {
-      Alert.alert('Erreur', errMsg(e));
-    }
+    } catch (e) { Alert.alert('Erreur', errMsg(e)); }
   };
 
   return (
@@ -94,11 +80,17 @@ export default function ChatInfoScreen({ route, navigation }) {
       
       {/* En-tête du profil */}
       <View style={{ backgroundColor: colors.surface, padding: 20, alignItems: 'center', borderBottomWidth: 1, borderBottomColor: colors.border }}>
-        <Avatar name={title} size={80} />
+        
+        {/* MODIFIÉ : On affiche l'avatar du peer si on l'a */}
+        <Avatar 
+          name={title} 
+          size={80} 
+          uri={peer?.avatar_url ? SERVER_URL + peer.avatar_url : null} 
+        />
+        
         <Text style={{ fontSize: 22, fontWeight: '700', marginTop: 12, color: colors.text }}>{title}</Text>
         {type !== 'group' && <Text style={{ color: colors.muted, marginTop: 4 }}>@{peerUsername}</Text>}
         
-        {/* Boutons d'action (Bloquer / Signaler) */}
         {type !== 'group' && (
           <View style={{ flexDirection: 'row', marginTop: 15 }}>
             <TouchableOpacity 
@@ -128,7 +120,7 @@ export default function ChatInfoScreen({ route, navigation }) {
         </TouchableOpacity>
       </View>
 
-      {/* Statistiques d'argent (seulement pour les discussions directes) */}
+      {/* Statistiques */}
       {type !== 'group' && (
         <View style={{ marginTop: 20, paddingHorizontal: 16 }}>
           <Text style={{ fontSize: 16, fontWeight: '700', color: colors.text, marginBottom: 10 }}>Transactions</Text>
@@ -147,7 +139,7 @@ export default function ChatInfoScreen({ route, navigation }) {
         </View>
       )}
 
-      {/* Section Médias (Photos) */}
+      {/* Photos */}
       <View style={{ marginTop: 20, paddingHorizontal: 16 }}>
         <Text style={{ fontSize: 16, fontWeight: '700', color: colors.text, marginBottom: 10 }}>Photos ({images.length})</Text>
         {images.length === 0 ? (
@@ -156,17 +148,14 @@ export default function ChatInfoScreen({ route, navigation }) {
           <ScrollView horizontal showsHorizontalScrollIndicator={false}>
             {images.map(img => (
               <TouchableOpacity key={img.id} onPress={() => setFullImage(SERVER_URL + img.file_url)}>
-                <Image 
-                  source={{ uri: SERVER_URL + img.file_url }} 
-                  style={{ width: 100, height: 100, borderRadius: 12, marginRight: 10 }} 
-                />
+                <Image source={{ uri: SERVER_URL + img.file_url }} style={{ width: 100, height: 100, borderRadius: 12, marginRight: 10 }} />
               </TouchableOpacity>
             ))}
           </ScrollView>
         )}
       </View>
 
-      {/* Section Documents */}
+      {/* Documents */}
       <View style={{ marginTop: 20, paddingHorizontal: 16 }}>
         <Text style={{ fontSize: 16, fontWeight: '700', color: colors.text, marginBottom: 10 }}>Documents ({files.length})</Text>
         {files.length === 0 ? (
@@ -181,7 +170,7 @@ export default function ChatInfoScreen({ route, navigation }) {
         )}
       </View>
 
-      {/* Section Liens */}
+      {/* Liens */}
       <View style={{ marginTop: 20, paddingHorizontal: 16, paddingBottom: 40 }}>
         <Text style={{ fontSize: 16, fontWeight: '700', color: colors.text, marginBottom: 10 }}>Liens partagés ({links.length})</Text>
         {links.length === 0 ? (
@@ -215,11 +204,7 @@ export default function ChatInfoScreen({ route, navigation }) {
           <View style={{ backgroundColor: colors.surface, borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 20 }}>
             <Text style={{ fontSize: 18, fontWeight: '700', color: colors.text, marginBottom: 15 }}>Pourquoi signalez-vous cet utilisateur ?</Text>
             {['Spam / Publicité', 'Harcèlement', 'Contenu inapproprié', 'Arnaque / Fraude', 'Autre'].map(reason => (
-              <TouchableOpacity 
-                key={reason} 
-                onPress={() => handleReport(reason)}
-                style={{ paddingVertical: 15, borderBottomWidth: 1, borderBottomColor: colors.border }}
-              >
+              <TouchableOpacity key={reason} onPress={() => handleReport(reason)} style={{ paddingVertical: 15, borderBottomWidth: 1, borderBottomColor: colors.border }}>
                 <Text style={{ color: colors.text, fontSize: 16 }}>{reason}</Text>
               </TouchableOpacity>
             ))}

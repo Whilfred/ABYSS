@@ -5,7 +5,7 @@ const { sign, requireAuth } = require('../auth');
 const { COUNTRIES } = require('../countries');
 const { AppError } = require('../services/wallet');
 
-const pub = (u) => ({ id: u.id, username: u.username, display_name: u.display_name, phone: u.phone, country: u.country, has_pin: !!u.pin_hash });
+const pub = (u) => ({ id: u.id, username: u.username, display_name: u.display_name, phone: u.phone, country: u.country, has_pin: !!u.pin_hash, avatar_url: u.avatar_url }); // <-- AJOUT
 
 r.post('/register', async (req, res) => {
   let { display_name, username, phone, country, password } = req.body || {};

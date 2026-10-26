@@ -1,30 +1,46 @@
 import React, { useCallback, useEffect, useLayoutEffect, useState } from 'react';
-import { ActionSheetIOS, Alert, FlatList, Platform, Text, TouchableOpacity, View } from 'react-native';
+import { ActionSheetIOS, Alert, FlatList, Platform, Text, TouchableOpacity, View, TextInput, Keyboard } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import { api, fcfa } from '../api';
 import { useAuth } from '../auth';
 import { Avatar } from '../components/UI';
-import { colors } from '../theme';
+import { useTheme } from '../ThemeContext';
+import { SERVER_URL } from '../config'; // <-- AJOUT ICI
 
 const preview = (c) => {
   if (c.last_type === 'money') return '💸 ' + fcfa(c.last_meta?.amount);
   if (c.last_type === 'money_request') return '🙏 Demande de ' + fcfa(c.last_meta?.amount);
+  if (c.last_type === 'image') return '📷 Photo';
+  if (c.last_type === 'file') return '📄 ' + (c.last_file_name || 'Document');
+  if (c.last_type === 'sticker') return '🖼️ Sticker';
   return c.body || 'Nouvelle discussion';
 };
+
 const timeOf = (d) => {
   if (!d) return '';
-  const t = new Date(d); const now = new Date();
-  return t.toDateString() === now.toDateString()
-    ? t.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })
-    : t.toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit' });
+  const t = new Date(d); 
+  const now = new Date();
+  if (t.toDateString() === now.toDateString()) {
+    return t.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
+  }
+  const diff = now - t;
+  if (diff < 7 * 24 * 60 * 60 * 1000) {
+    return t.toLocaleDateString('fr-FR', { weekday: 'short' });
+  }
+  return t.toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit' });
 };
 
 export default function ChatsScreen({ navigation }) {
   const { socket } = useAuth();
+  const { colors } = useTheme();
+  
   const [chats, setChats] = useState([]);
+  const [search, setSearch] = useState('');
+
   const load = useCallback(() => api.get('/conversations').then((r) => setChats(r.data)).catch(() => {}), []);
   useFocusEffect(useCallback(() => { load(); }, [load]));
+
   useEffect(() => {
     if (!socket) return;
     socket.on('message:new', load);
@@ -41,34 +57,107 @@ export default function ChatsScreen({ navigation }) {
         { text: 'Nouveau groupe', onPress: () => navigation.navigate('NewGroup') },
         { text: 'Annuler', style: 'cancel' }]);
     };
-    navigation.setOptions({ headerRight: () => (
-      <TouchableOpacity onPress={menu} style={{ marginRight: 16 }}><Ionicons name="create-outline" size={26} color={colors.primary} /></TouchableOpacity>) });
-  }, [navigation]);
+    navigation.setOptions({ 
+      headerRight: () => (
+        <TouchableOpacity onPress={menu} style={{ marginRight: 16 }}>
+          <Ionicons name="create-outline" size={26} color={colors.primary} />
+        </TouchableOpacity>
+      ) 
+    });
+  }, [navigation, colors]);
+
+  const filteredChats = chats.filter(c => {
+    const title = c.type === 'group' ? c.name : c.peer?.display_name || '';
+    return title.toLowerCase().includes(search.toLowerCase());
+  });
 
   return (
-    <FlatList data={chats} keyExtractor={(c) => c.id} style={{ backgroundColor: '#fff' }}
-      ListEmptyComponent={<Text style={{ textAlign: 'center', color: colors.muted, marginTop: 80, paddingHorizontal: 30 }}>
-        Aucune discussion. Touchez ✏️ pour écrire à quelqu'un via son nom d'utilisateur.</Text>}
-      renderItem={({ item: c }) => {
-        const title = c.type === 'group' ? c.name : c.peer?.display_name || '—';
-        return (
-          <TouchableOpacity activeOpacity={0.7}
-            onPress={() => navigation.navigate('Chat', { id: c.id, title, type: c.type, peerUsername: c.peer?.username, peerName: c.peer?.display_name })}
-            style={{ flexDirection: 'row', alignItems: 'center', padding: 14, borderBottomWidth: 1, borderBottomColor: colors.border }}>
-            <Avatar name={title} />
-            <View style={{ flex: 1, marginLeft: 12 }}>
-              <Text style={{ fontWeight: '700', fontSize: 16, color: colors.text }}>{title}</Text>
-              <Text numberOfLines={1} style={{ color: colors.muted, marginTop: 3 }}>{preview(c)}</Text>
-            </View>
-            <View style={{ alignItems: 'flex-end' }}>
-              <Text style={{ color: colors.muted, fontSize: 12 }}>{timeOf(c.last_at)}</Text>
-              {c.unread > 0 && (
-                <View style={{ backgroundColor: colors.primary, borderRadius: 11, minWidth: 22, height: 22, alignItems: 'center', justifyContent: 'center', marginTop: 6, paddingHorizontal: 6 }}>
-                  <Text style={{ color: '#fff', fontWeight: '700', fontSize: 12 }}>{c.unread}</Text>
-                </View>)}
-            </View>
-          </TouchableOpacity>
-        );
-      }} />
+    <View style={{ flex: 1, backgroundColor: colors.bg }}>
+      
+      <View style={{ padding: 12, backgroundColor: colors.surface, borderBottomWidth: 1, borderBottomColor: colors.border }}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: colors.bg, borderRadius: 12, paddingHorizontal: 12 }}>
+          <Ionicons name="search" size={20} color={colors.muted} />
+          <TextInput 
+            value={search}
+            onChangeText={setSearch}
+            placeholder="Rechercher une discussion..."
+            placeholderTextColor={colors.muted}
+            style={{ flex: 1, paddingVertical: 10, paddingHorizontal: 8, color: colors.text, fontSize: 15 }}
+          />
+          {search.length > 0 && (
+            <TouchableOpacity onPress={() => setSearch('')}>
+              <Ionicons name="close-circle" size={18} color={colors.muted} />
+            </TouchableOpacity>
+          )}
+        </View>
+      </View>
+
+      <FlatList 
+        data={filteredChats} 
+        keyExtractor={(c) => c.id} 
+        contentContainerStyle={{ paddingVertical: 8 }}
+        ListEmptyComponent={
+          <View style={{ alignItems: 'center', marginTop: 80, paddingHorizontal: 30 }}>
+            <Ionicons name="chatbubbles-outline" size={60} color={colors.border} />
+            <Text style={{ textAlign: 'center', color: colors.muted, marginTop: 16, fontSize: 16 }}>
+              {search ? 'Aucune discussion trouvée.' : 'Aucune discussion. Touchez ✏️ pour écrire à quelqu\'un.'}
+            </Text>
+          </View>
+        }
+        renderItem={({ item: c }) => {
+          const title = c.type === 'group' ? c.name : c.peer?.display_name || '—';
+          const hasUnread = c.unread > 0;
+          
+          return (
+            <TouchableOpacity 
+              activeOpacity={0.7}
+              onPress={() => navigation.navigate('Chat', { id: c.id, title, type: c.type, peerUsername: c.peer?.username, peerName: c.peer?.display_name })}
+              style={{ 
+                flexDirection: 'row', 
+                alignItems: 'center', 
+                padding: 14, 
+                backgroundColor: hasUnread ? colors.surface : colors.bg,
+                borderBottomWidth: 1, 
+                borderBottomColor: colors.border 
+              }}
+            >
+              <View>
+                {/* MODIFIÉ : On passe l'URL de l'avatar */}
+                <Avatar 
+                  name={title} 
+                  size={54} 
+                  uri={c.type === 'direct' && c.peer?.avatar_url ? SERVER_URL + c.peer.avatar_url : null} 
+                />
+                {c.type === 'group' && (
+                  <View style={{ position: 'absolute', bottom: -2, right: -2, backgroundColor: colors.surface, borderRadius: 10, padding: 2 }}>
+                    <Ionicons name="people" size={14} color={colors.primary} />
+                  </View>
+                )}
+              </View>
+
+              <View style={{ flex: 1, marginLeft: 14 }}>
+                <Text style={{ fontWeight: '700', fontSize: 16, color: colors.text, marginBottom: 4 }} numberOfLines={1}>
+                  {title}
+                </Text>
+                <Text numberOfLines={1} style={{ color: hasUnread ? colors.text : colors.muted, fontSize: 14, fontWeight: hasUnread ? '600' : '400' }}>
+                  {preview(c)}
+                </Text>
+              </View>
+
+              <View style={{ alignItems: 'flex-end', marginLeft: 10 }}>
+                <Text style={{ color: hasUnread ? colors.primary : colors.muted, fontSize: 12, fontWeight: hasUnread ? '700' : '400' }}>
+                  {timeOf(c.last_at)}
+                </Text>
+                {hasUnread && (
+                  <View style={{ backgroundColor: colors.primary, borderRadius: 12, minWidth: 24, height: 24, alignItems: 'center', justifyContent: 'center', marginTop: 6, paddingHorizontal: 6 }}>
+                    <Text style={{ color: '#fff', fontWeight: '800', fontSize: 12 }}>{c.unread}</Text>
+                  </View>
+                )}
+              </View>
+            </TouchableOpacity>
+          );
+        }} 
+      />
+    </View>
   );
 }

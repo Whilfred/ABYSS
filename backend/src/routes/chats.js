@@ -8,7 +8,7 @@ r.use(requireAuth);
 r.get('/', async (req, res) => {
   const { rows } = await db.query(
     `SELECT c.id, c.type, c.name,
-       (SELECT json_build_object('id',u.id,'username',u.username,'display_name',u.display_name)
+       (SELECT json_build_object('id',u.id,'username',u.username,'display_name',u.display_name,'avatar_url',u.avatar_url)
           FROM conversation_members x JOIN users u ON u.id=x.user_id
           WHERE x.conversation_id=c.id AND x.user_id<>$1 LIMIT 1) AS peer,
        lm.body, lm.type AS last_type, lm.created_at AS last_at, lm.meta AS last_meta, lm.file_name AS last_file_name,
@@ -23,17 +23,16 @@ r.get('/', async (req, res) => {
 
 r.post('/direct', async (req, res) => {
   const username = String(req.body?.username || '').toLowerCase();
-  const peer = (await db.query('SELECT id,username,display_name FROM users WHERE username=$1', [username])).rows[0];
+  const peer = (await db.query('SELECT id,username,display_name,avatar_url FROM users WHERE username=$1', [username])).rows[0];
   if (!peer) throw new AppError('Utilisateur introuvable', 404);
   if (peer.id === req.userId) throw new AppError('Conversation impossible avec vous-même');
 
-  // --- AJOUT : Vérifier le blocage ---
+  // Vérifier le blocage
   const blockCheck = await db.query(
     'SELECT 1 FROM blocked_users WHERE (blocker_id=$1 AND blocked_id=$2) OR (blocker_id=$2 AND blocked_id=$1)',
     [req.userId, peer.id]
   );
   if (blockCheck.rowCount > 0) throw new AppError('Impossible de discuter avec cet utilisateur.', 403);
-  // -----------------------------------
 
   const key = [req.userId, peer.id].sort().join(':');
   const client = await db.connect();
@@ -73,10 +72,14 @@ r.get('/:id/messages', async (req, res) => {
   const { id } = req.params;
   if (!(await isMember(db, id, req.userId))) throw new AppError('Accès refusé', 403);
   const before = req.query.before ? new Date(req.query.before) : new Date(Date.now() + 1000);
+  
+  // --- MODIFIÉ : Ajout de sender_avatar ---
   const { rows: messages } = await db.query(
-    `SELECT m.*, u.display_name AS sender_name, u.username AS sender_username
+    `SELECT m.*, u.display_name AS sender_name, u.username AS sender_username, u.avatar_url AS sender_avatar
      FROM messages m JOIN users u ON u.id=m.sender_id
      WHERE m.conversation_id=$1 AND m.created_at<$2 ORDER BY m.created_at DESC LIMIT 50`, [id, before]);
+  // --------------------------------------
+
   await db.query('UPDATE conversation_members SET last_read_at=now() WHERE conversation_id=$1 AND user_id=$2', [id, req.userId]);
   const { rows: reads } = await db.query('SELECT user_id,last_read_at FROM conversation_members WHERE conversation_id=$1', [id]);
   broadcast(req.app.get('io'), id, 'conversation:read', { conversation_id: id, user_id: req.userId, at: new Date() }).catch(() => {});
@@ -104,7 +107,6 @@ r.post('/:id/messages', async (req, res) => {
   if (['image', 'file', 'sticker'].includes(type) && !file_url) throw new AppError('Fichier manquant');
   if (!(await isMember(db, id, req.userId))) throw new AppError('Accès refusé', 403);
 
-  // --- AJOUT : Vérifier le blocage avant d'envoyer le message ---
   const blockCheck = await db.query(
     `SELECT 1 FROM blocked_users 
      WHERE (blocker_id=$1 AND blocked_id IN (SELECT user_id FROM conversation_members WHERE conversation_id=$2))
@@ -112,7 +114,6 @@ r.post('/:id/messages', async (req, res) => {
     [req.userId, id]
   );
   if (blockCheck.rowCount > 0) throw new AppError('Impossible d\'envoyer un message à cet utilisateur.', 403);
-  // -------------------------------------------------------------
 
   const msg = await createMessage(db, { 
     conversationId: id, 

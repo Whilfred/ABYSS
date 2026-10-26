@@ -16,12 +16,20 @@ r.get('/search', async (req, res) => {
 r.get('/:username', async (req, res) => {
   const username = String(req.params.username || '').toLowerCase();
   const { rows } = await db.query(
-    'SELECT id, username, display_name, country, phone FROM users WHERE username=$1',
+    'SELECT id, username, display_name, country, phone, avatar_url FROM users WHERE username=$1',
     [username]
   );
   if (rows.length === 0) return res.status(404).json({ error: 'Utilisateur introuvable' });
   res.json(rows[0]);
 });
-// --------------------------------------------------------
+
+// --- AJOUT : Mettre à jour la photo de profil ---
+r.post('/avatar', async (req, res) => {
+  const { avatar_url } = req.body;
+  if (!avatar_url) return res.status(400).json({ error: 'URL manquante' });
+  
+  await db.query('UPDATE users SET avatar_url=$1 WHERE id=$2', [avatar_url, req.userId]);
+  res.json({ ok: true, avatar_url });
+});
 
 module.exports = r;
