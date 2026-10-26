@@ -11,11 +11,13 @@ r.get('/', async (req, res) => {
        (SELECT json_build_object('id',u.id,'username',u.username,'display_name',u.display_name)
           FROM conversation_members x JOIN users u ON u.id=x.user_id
           WHERE x.conversation_id=c.id AND x.user_id<>$1 LIMIT 1) AS peer,
-       lm.body, lm.type AS last_type, lm.created_at AS last_at, lm.meta AS last_meta,
+       -- --- MODIFIÉ : Ajout de file_name pour l'aperçu ---
+       lm.body, lm.type AS last_type, lm.created_at AS last_at, lm.meta AS last_meta, lm.file_name AS last_file_name,
        (SELECT count(*)::int FROM messages m WHERE m.conversation_id=c.id AND m.sender_id<>$1 AND m.created_at>cm.last_read_at) AS unread
      FROM conversation_members cm
      JOIN conversations c ON c.id=cm.conversation_id
-     LEFT JOIN LATERAL (SELECT body,type,meta,created_at FROM messages WHERE conversation_id=c.id ORDER BY created_at DESC LIMIT 1) lm ON true
+     -- --- MODIFIÉ : Ajout de file_name dans le LATERAL ---
+     LEFT JOIN LATERAL (SELECT body,type,meta,created_at,file_name FROM messages WHERE conversation_id=c.id ORDER BY created_at DESC LIMIT 1) lm ON true
      WHERE cm.user_id=$1
      ORDER BY COALESCE(lm.created_at,c.created_at) DESC`, [req.userId]);
   res.json(rows);
@@ -84,10 +86,30 @@ r.post('/:id/read', async (req, res) => {
 
 r.post('/:id/messages', async (req, res) => {
   const { id } = req.params;
+  
+  // --- MODIFIÉ : On récupère le type, le fichier, etc. ---
+  const type = req.body?.type || 'text';
   const body = String(req.body?.body || '').trim();
-  if (!body || body.length > 4000) throw new AppError('Message invalide');
+  const file_url = req.body?.file_url;
+  const file_name = req.body?.file_name;
+  const meta = req.body?.meta;
+
+  // --- MODIFIÉ : La validation du texte ne s'applique qu'aux messages textuels ---
+  if (type === 'text' && (!body || body.length > 4000)) throw new AppError('Message invalide');
+  if (['image', 'file', 'sticker'].includes(type) && !file_url) throw new AppError('Fichier manquant');
   if (!(await isMember(db, id, req.userId))) throw new AppError('Accès refusé', 403);
-  const msg = await createMessage(db, { conversationId: id, senderId: req.userId, body });
+
+  // --- MODIFIÉ : On passe les nouvelles infos à createMessage ---
+  const msg = await createMessage(db, { 
+    conversationId: id, 
+    senderId: req.userId, 
+    body, 
+    type, 
+    file_url, 
+    file_name,
+    meta
+  });
+  
   await broadcast(req.app.get('io'), id, 'message:new', msg);
   res.json(msg);
 });

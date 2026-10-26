@@ -79,3 +79,14 @@ CREATE TABLE IF NOT EXISTS money_requests (
   created_at timestamptz NOT NULL DEFAULT now(),
   resolved_at timestamptz
 );
+
+-- 1. Supprimer l'ancienne contrainte stricte sur le type
+ALTER TABLE messages DROP CONSTRAINT IF EXISTS messages_type_check;
+
+-- 2. Ajouter la nouvelle contrainte avec les nouveaux types
+ALTER TABLE messages ADD CONSTRAINT messages_type_check 
+  CHECK (type IN ('text', 'money', 'money_request', 'image', 'file', 'sticker'));
+
+-- 3. Ajouter les colonnes pour stocker les infos du fichier
+ALTER TABLE messages ADD COLUMN IF NOT EXISTS file_url text;
+ALTER TABLE messages ADD COLUMN IF NOT EXISTS file_name text;

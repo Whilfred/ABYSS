@@ -3,13 +3,15 @@ const db = require('../db');
 const JOIN = 'JOIN users u ON u.id=m.sender_id';
 const COLS = 'm.*, u.display_name AS sender_name, u.username AS sender_username';
 
-async function createMessage(q, { conversationId, senderId, type = 'text', body = null, meta = null }) {
+// --- MODIFIÉ : Ajout de file_url et file_name ---
+async function createMessage(q, { conversationId, senderId, type = 'text', body = null, meta = null, file_url = null, file_name = null }) {
   const { rows } = await q.query(
-    `WITH m AS (INSERT INTO messages(conversation_id,sender_id,type,body,meta) VALUES($1,$2,$3,$4,$5) RETURNING *)
+    `WITH m AS (INSERT INTO messages(conversation_id,sender_id,type,body,meta,file_url,file_name) VALUES($1,$2,$3,$4,$5,$6,$7) RETURNING *)
      SELECT ${COLS} FROM m ${JOIN}`,
-    [conversationId, senderId, type, body, meta ? JSON.stringify(meta) : null]);
+    [conversationId, senderId, type, body, meta ? JSON.stringify(meta) : null, file_url, file_name]);
   return rows[0];
 }
+
 async function getMessage(q, id) {
   const { rows } = await q.query(`SELECT ${COLS} FROM messages m ${JOIN} WHERE m.id=$1`, [id]);
   return rows[0];

@@ -11,6 +11,7 @@ import LoginScreen from './src/screens/LoginScreen';
 import RegisterScreen from './src/screens/RegisterScreen';
 import ChatsScreen from './src/screens/ChatsScreen';
 import ChatScreen from './src/screens/ChatScreen';
+import ChatInfoScreen from './src/screens/ChatInfoScreen'; // <-- AJOUT
 import NewChatScreen from './src/screens/NewChatScreen';
 import NewGroupScreen from './src/screens/NewGroupScreen';
 import WalletScreen from './src/screens/WalletScreen';
@@ -47,6 +48,7 @@ function Root() {
         <>
           <Stack.Screen name="Tabs" component={Tabs} options={{ headerShown: false }} />
           <Stack.Screen name="Chat" component={ChatScreen} />
+          <Stack.Screen name="ChatInfo" component={ChatInfoScreen} options={{ title: 'Infos de la discussion', headerBackTitle: 'Retour' }} />
           <Stack.Screen name="NewChat" component={NewChatScreen} options={{ title: 'Nouvelle discussion' }} />
           <Stack.Screen name="NewGroup" component={NewGroupScreen} options={{ title: 'Nouveau groupe' }} />
           <Stack.Screen name="Deposit" component={DepositScreen} options={{ title: 'Déposer' }} />
