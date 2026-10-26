@@ -1,0 +1,29 @@
+{
+  "expo": {
+    "name": "ABYSS",
+    "slug": "abyss",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "light",
+    "primaryColor": "#1E5BFF",
+    "ios": {
+      "supportsTablet": false,
+      "bundleIdentifier": "com.abyss.app"
+    },
+    "android": {
+      "package": "com.abyss.app",
+      "adaptiveIcon": {
+        "backgroundColor": "#1E5BFF"
+      }
+    },
+    "plugins": [
+      [
+        "expo-splash-screen",
+        {
+          "backgroundColor": "#1E5BFF"
+        }
+      ],
+      "expo-font"
+    ]
+  }
+}
