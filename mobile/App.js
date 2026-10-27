@@ -18,7 +18,8 @@ import WalletScreen from './src/screens/WalletScreen';
 import DepositScreen from './src/screens/DepositScreen';
 import WithdrawScreen from './src/screens/WithdrawScreen';
 import ProfileScreen from './src/screens/ProfileScreen';
-import SettingsScreen from './src/screens/SettingsScreen'; // <-- AJOUT
+import SettingsScreen from './src/screens/SettingsScreen';
+import StoryViewerScreen from './src/screens/StoryViewerScreen'; // <-- AJOUT
 
 const Stack = createNativeStackNavigator();
 const Tab = createBottomTabNavigator();
@@ -73,9 +74,10 @@ function Root() {
           <Stack.Screen name="NewGroup" component={NewGroupScreen} options={{ title: 'Nouveau groupe' }} />
           <Stack.Screen name="Deposit" component={DepositScreen} options={{ title: 'Déposer' }} />
           <Stack.Screen name="Withdraw" component={WithdrawScreen} options={{ title: 'Retirer' }} />
-          
-          {/* AJOUT DE L'ÉCRAN PARAMÈTRES */}
           <Stack.Screen name="Settings" component={SettingsScreen} options={{ title: 'Paramètres' }} />
+          
+          {/* AJOUT DE L'ÉCRAN STORY VIEWER (plein écran, sans header) */}
+          <Stack.Screen name="StoryViewer" component={StoryViewerScreen} options={{ headerShown: false, animation: 'fade' }} />
         </>
       ) : (
         <>

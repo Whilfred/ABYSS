@@ -43,6 +43,7 @@ io.on('connection', (socket) => socket.join('user:' + socket.userId));
 app.use(helmet({ crossOriginResourcePolicy: false })); 
 app.use(cors());
 app.use(express.json({ limit: '100kb' }));
+app.use('/api/stories', require('./routes/stories'));
 
 app.use('/uploads', express.static(uploadDir));
 
