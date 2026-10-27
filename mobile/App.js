@@ -9,10 +9,11 @@ import { AuthProvider, useAuth } from './src/auth';
 import { ThemeProvider, useTheme } from './src/ThemeContext'; 
 import LoginScreen from './src/screens/LoginScreen';
 import RegisterScreen from './src/screens/RegisterScreen';
+import HomeScreen from './src/screens/HomeScreen'; // <-- AJOUT
 import ChatsScreen from './src/screens/ChatsScreen';
 import ChatScreen from './src/screens/ChatScreen';
 import ChatInfoScreen from './src/screens/ChatInfoScreen';
-import GroupInfoScreen from './src/screens/GroupInfoScreen'; // <-- AJOUT
+import GroupInfoScreen from './src/screens/GroupInfoScreen';
 import NewChatScreen from './src/screens/NewChatScreen';
 import NewGroupScreen from './src/screens/NewGroupScreen';
 import WalletScreen from './src/screens/WalletScreen';
@@ -35,12 +36,19 @@ function Tabs() {
       tabBarStyle: { backgroundColor: colors.surface, borderTopColor: colors.border },
       headerStyle: { backgroundColor: colors.surface },
       headerTitleStyle: { fontWeight: '800', color: colors.primary },
-      tabBarIcon: ({ color, size }) => (
-        <Ionicons color={color} size={size}
-          name={route.name === 'Discussions' ? 'chatbubbles' : route.name === 'Portefeuille' ? 'wallet' : 'person-circle'} />
-      ),
+      tabBarIcon: ({ color, size }) => {
+        // Attribution des icônes selon l'onglet
+        let iconName;
+        if (route.name === 'Accueil') iconName = 'home';
+        else if (route.name === 'Discussions') iconName = 'chatbubbles';
+        else if (route.name === 'Portefeuille') iconName = 'wallet';
+        else iconName = 'person-circle';
+        
+        return <Ionicons name={iconName} color={color} size={size} />;
+      },
     })}>
-      <Tab.Screen name="Discussions" component={ChatsScreen} options={{ title: 'ABYSS' }} />
+      <Tab.Screen name="Accueil" component={HomeScreen} options={{ title: 'Accueil' }} />
+      <Tab.Screen name="Discussions" component={ChatsScreen} options={{ title: 'Messages' }} />
       <Tab.Screen name="Portefeuille" component={WalletScreen} />
       <Tab.Screen name="Profil" component={ProfileScreen} />
     </Tab.Navigator>
@@ -71,10 +79,7 @@ function Root() {
           <Stack.Screen name="Tabs" component={Tabs} options={{ headerShown: false }} />
           <Stack.Screen name="Chat" component={ChatScreen} />
           <Stack.Screen name="ChatInfo" component={ChatInfoScreen} options={{ title: 'Infos de la discussion', headerBackTitle: 'Retour' }} />
-          
-          {/* AJOUT DE L'ÉCRAN GROUP INFO */}
           <Stack.Screen name="GroupInfo" component={GroupInfoScreen} options={{ title: 'Infos du groupe' }} />
-          
           <Stack.Screen name="NewChat" component={NewChatScreen} options={{ title: 'Nouvelle discussion' }} />
           <Stack.Screen name="NewGroup" component={NewGroupScreen} options={{ title: 'Nouveau groupe' }} />
           <Stack.Screen name="Deposit" component={DepositScreen} options={{ title: 'Déposer' }} />

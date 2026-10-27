@@ -1,9 +1,8 @@
 import React, { useCallback, useEffect, useLayoutEffect, useState } from 'react';
-import { ActionSheetIOS, Alert, FlatList, Platform, Text, TouchableOpacity, View, TextInput, ScrollView, Image } from 'react-native';
+import { ActionSheetIOS, Alert, FlatList, Platform, Text, TouchableOpacity, View, TextInput } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
-import * as ImagePicker from 'expo-image-picker';
-import { api, fcfa, errMsg } from '../api';
+import { api, fcfa } from '../api';
 import { useAuth } from '../auth';
 import { Avatar } from '../components/UI';
 import { useTheme } from '../ThemeContext';
@@ -33,21 +32,17 @@ const timeOf = (d) => {
 };
 
 export default function ChatsScreen({ navigation }) {
-  const { socket, user } = useAuth();
+  const { socket } = useAuth();
   const { colors } = useTheme();
   
   const [chats, setChats] = useState([]);
-  const [stories, setStories] = useState([]);
   const [search, setSearch] = useState('');
-  const [uploadingStory, setUploadingStory] = useState(false);
 
   const load = useCallback(() => api.get('/conversations').then((r) => setChats(r.data)).catch(() => {}), []);
-  const loadStories = useCallback(() => api.get('/stories').then((r) => setStories(r.data)).catch(() => {}), []);
   
   useFocusEffect(useCallback(() => { 
     load(); 
-    loadStories();
-  }, [load, loadStories]));
+  }, [load]));
 
   useEffect(() => {
     if (!socket) return;
@@ -74,42 +69,6 @@ export default function ChatsScreen({ navigation }) {
     });
   }, [navigation, colors]);
 
-  const addStory = async () => {
-    try {
-      const result = await ImagePicker.launchImageLibraryAsync({ 
-        mediaTypes: ['images', 'videos'], 
-        quality: 1,
-        allowsEditing: true,
-      });
-
-      if (!result.canceled) {
-        setUploadingStory(true);
-        const file = result.assets[0];
-        const formData = new FormData();
-        formData.append('media', {
-          uri: Platform.OS === 'ios' ? file.uri.replace('file://', '') : file.uri,
-          name: file.fileName || (file.type === 'video' ? 'story.mp4' : 'story.jpg'),
-          type: file.mimeType || (file.type === 'video' ? 'video/mp4' : 'image/jpeg'),
-        });
-
-        await api.post('/stories', formData, {
-          headers: { 'Content-Type': 'multipart/form-data' },
-        });
-        
-        await loadStories();
-        Alert.alert('Succès', 'Votre story a été publiée !');
-      }
-    } catch (e) {
-      Alert.alert('Erreur', errMsg(e));
-    } finally {
-      setUploadingStory(false);
-    }
-  };
-
-  const viewStory = (index) => {
-    navigation.navigate('StoryViewer', { stories, initialIndex: index });
-  };
-
   const filteredChats = chats.filter(c => {
     const title = c.type === 'group' ? c.name : c.peer?.display_name || '';
     return title.toLowerCase().includes(search.toLowerCase());
@@ -118,50 +77,6 @@ export default function ChatsScreen({ navigation }) {
   return (
     <View style={{ flex: 1, backgroundColor: colors.bg }}>
       
-      {/* --- SECTION STORIES --- */}
-      <View style={{ paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: colors.border, backgroundColor: colors.surface }}>
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ paddingHorizontal: 12 }}>
-          
-          <TouchableOpacity 
-            onPress={addStory} 
-            disabled={uploadingStory}
-            style={{ alignItems: 'center', marginRight: 15 }}
-          >
-            <View style={{ 
-              width: 64, height: 64, borderRadius: 32, 
-              backgroundColor: colors.surface, borderWidth: 2, borderColor: colors.border, 
-              alignItems: 'center', justifyContent: 'center' 
-            }}>
-              <Ionicons name={uploadingStory ? "hourglass" : "add"} size={30} color={colors.primary} />
-            </View>
-            <Text style={{ color: colors.text, fontSize: 12, marginTop: 5, fontWeight: '600' }}>Ma story</Text>
-          </TouchableOpacity>
-
-          {stories.map((story, index) => (
-            <TouchableOpacity 
-              key={story.id} 
-              onPress={() => viewStory(index)}
-              style={{ alignItems: 'center', marginRight: 15 }}
-            >
-              <View style={{ 
-                width: 64, height: 64, borderRadius: 32, 
-                borderWidth: 3, borderColor: colors.primary, 
-                padding: 2 
-              }}>
-                <Avatar 
-                  name={story.display_name} 
-                  size={54} 
-                  uri={story.avatar_url ? SERVER_URL + story.avatar_url : null} 
-                />
-              </View>
-              <Text style={{ color: colors.text, fontSize: 12, marginTop: 5, maxWidth: 64 }} numberOfLines={1}>
-                {story.display_name.split(' ')[0]}
-              </Text>
-            </TouchableOpacity>
-          ))}
-        </ScrollView>
-      </View>
-
       {/* Barre de recherche */}
       <View style={{ padding: 12, backgroundColor: colors.surface, borderBottomWidth: 1, borderBottomColor: colors.border }}>
         <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: colors.bg, borderRadius: 12, paddingHorizontal: 12 }}>
@@ -211,7 +126,6 @@ export default function ChatsScreen({ navigation }) {
               }}
             >
               <View>
-                {/* MODIFIÉ : Utilisation de c.avatar_url pour les groupes */}
                 <Avatar 
                   name={title} 
                   size={54} 

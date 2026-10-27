@@ -2,6 +2,7 @@ const r = require('express').Router();
 const db = require('../db');
 const { requireAuth } = require('../auth');
 const { AppError } = require('../services/wallet');
+const { createMessage, broadcast } = require('../services/chat'); // <-- IMPORT
 const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
@@ -81,7 +82,7 @@ r.get('/:id/views', async (req, res) => {
   res.json(rows);
 });
 
-// 6. Réagir à une story (avec notification Socket.io)
+// 6. Réagir à une story (avec notification Socket.io et création de message)
 r.post('/:id/react', async (req, res) => {
   const { id } = req.params;
   const { emoji } = req.body;
@@ -98,15 +99,41 @@ r.post('/:id/react', async (req, res) => {
   const story = (await db.query('SELECT user_id FROM stories WHERE id=$1', [id])).rows[0];
   
   if (story) {
-    // 3. Envoyer l'événement Socket.io au propriétaire
     const io = req.app.get('io');
     const user = (await db.query('SELECT username, display_name FROM users WHERE id=$1', [req.userId])).rows[0];
     
+    // 3. Envoyer l'événement Socket.io au propriétaire (pour l'animation)
     io.to('user:' + story.user_id).emit('story:reaction', {
       story_id: id,
       emoji,
       user: { username: user.username, display_name: user.display_name }
     });
+
+    // 4. Créer ou récupérer la conversation directe
+    const key = [req.userId, story.user_id].sort().join(':');
+    let conv = (await db.query('SELECT id FROM conversations WHERE direct_key=$1', [key])).rows[0];
+    
+    if (!conv) {
+      conv = (await db.query(
+        `INSERT INTO conversations(type,direct_key,created_by) VALUES('direct',$1,$2)
+         ON CONFLICT(direct_key) DO UPDATE SET direct_key=EXCLUDED.direct_key RETURNING id`, 
+        [key, req.userId]
+      )).rows[0];
+      await db.query('INSERT INTO conversation_members(conversation_id,user_id) VALUES($1,$2),($1,$3) ON CONFLICT DO NOTHING',
+        [conv.id, req.userId, story.user_id]);
+    }
+
+    // 5. Créer un message spécial dans la conversation
+    const msg = await createMessage(db, {
+      conversationId: conv.id,
+      senderId: req.userId,
+      body: `${emoji} a réagi à votre story`,
+      type: 'text', // On garde 'text' pour l'instant
+      meta: { story_id: id, action: 'story_reaction', emoji }
+    });
+
+    // 6. Envoyer le message en temps réel à l'auteur
+    await broadcast(io, conv.id, 'message:new', msg);
   }
 
   res.json({ ok: true });
