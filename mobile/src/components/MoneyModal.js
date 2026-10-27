@@ -4,10 +4,10 @@ import { Ionicons } from '@expo/vector-icons';
 import { Button, Input } from './UI';
 import PinModal from './PinModal';
 import { api, errMsg, fcfa } from '../api';
-import { useTheme } from '../ThemeContext'; // <-- Thème
+import { useTheme } from '../ThemeContext';
 
 export default function MoneyModal({ visible, mode, onClose, conversationId, peerUsername, peerName }) {
-  const { colors } = useTheme(); // <-- Couleurs dynamiques
+  const { colors } = useTheme();
   const [amount, setAmount] = useState('');
   const [note, setNote] = useState('');
   const [pinOpen, setPinOpen] = useState(false);
@@ -31,21 +31,23 @@ export default function MoneyModal({ visible, mode, onClose, conversationId, pee
 
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
-      {/* TouchableWithoutFeedback permet de fermer le modal en cliquant sur le fond */}
       <TouchableWithoutFeedback onPress={onClose}>
         <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(11,27,63,0.5)' }}>
           
-          {/* TouchableWithoutFeedback pour empêcher la fermeture quand on clique DANS le modal */}
           <TouchableWithoutFeedback onPress={() => {}}>
             <View style={{ backgroundColor: colors.surface, borderTopLeftRadius: 22, borderTopRightRadius: 22, padding: 20 }}>
               
-              {/* En-tête du modal avec le bouton Fermer (X) */}
+              {/* En-tête du modal */}
               <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 4 }}>
                 <View style={{ flex: 1 }}>
+                  {/* Titre générique */}
                   <Text style={{ fontSize: 20, fontWeight: '800', color: colors.text }}>
-                    {mode === 'send' ? `Envoyer à ${peerName}` : `Demander à ${peerName}`}
+                    {mode === 'send' ? 'Envoyer de l\'argent' : 'Demander de l\'argent'}
                   </Text>
-                  <Text style={{ color: colors.muted, marginTop: 4 }}>@{peerUsername}</Text>
+                  {/* Sous-titre avec le nom de la personne */}
+                  <Text style={{ color: colors.muted, marginTop: 4 }}>
+                    {mode === 'send' ? `À ${peerName}` : `À ${peerName}`} (@{peerUsername})
+                  </Text>
                 </View>
                 <TouchableOpacity onPress={onClose} style={{ padding: 4, marginLeft: 10 }}>
                   <Ionicons name="close" size={26} color={colors.muted} />

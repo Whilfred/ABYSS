@@ -123,6 +123,7 @@ export default function ChatScreen({ route, navigation }) {
   const [showAttach, setShowAttach] = useState(false); 
   const [isOnline, setIsOnline] = useState(false);
   const [lastSeen, setLastSeen] = useState(null);
+  const [peerAvatar, setPeerAvatar] = useState(null);
   const isGroup = type === 'group';
 
   useEffect(() => {
@@ -130,6 +131,7 @@ export default function ChatScreen({ route, navigation }) {
       api.get(`/users/${peerUsername}`).then(r => {
         setLastSeen(r.data.last_seen);
         setIsOnline(r.data.last_seen === null);
+        setPeerAvatar(r.data.avatar_url);
       }).catch(() => {});
     }
   }, [peerUsername, isGroup]);
@@ -161,9 +163,8 @@ export default function ChatScreen({ route, navigation }) {
     navigation.setOptions({ 
       headerTitle: () => (
         <TouchableOpacity 
-          style={{ alignItems: 'center' }} 
+          style={{ flexDirection: 'row', alignItems: 'center' }} 
           onPress={() => {
-            // --- MODIFIÉ : Redirection conditionnelle ---
             if (isGroup) {
               navigation.navigate('GroupInfo', { id, title });
             } else {
@@ -171,19 +172,29 @@ export default function ChatScreen({ route, navigation }) {
             }
           }}
         >
-          <Text style={{ fontSize: 16, fontWeight: '700', color: colors.text }}>{title}</Text>
-          <Text style={{ fontSize: 12, color: colors.muted }}>
-            {isGroup ? 'Appuyez pour les infos' : (isOnline ? 'En ligne' : formatLastSeen(lastSeen))}
-          </Text>
+          {!isGroup && (
+            <Image 
+              source={{ uri: peerAvatar ? SERVER_URL + peerAvatar : 'https://ui-avatars.com/api/?name=' + title }} 
+              style={{ width: 36, height: 36, borderRadius: 18, marginRight: 10 }} 
+            />
+          )}
+          
+          <View>
+            <Text style={{ fontSize: 16, fontWeight: '700', color: colors.text }}>{title}</Text>
+            <Text style={{ fontSize: 12, color: colors.muted }}>
+              {isGroup ? 'Appuyez pour les infos' : (isOnline ? 'En ligne' : formatLastSeen(lastSeen))}
+            </Text>
+          </View>
         </TouchableOpacity>
       ),
+      // --- MODIFIÉ : Une seule icône pour envoyer de l'argent ---
       headerRight: !isGroup ? () => (
-        <View style={{ flexDirection: 'row' }}>
-          <TouchableOpacity onPress={() => setMoney('request')} style={{ marginRight: 18 }}><Ionicons name="download-outline" size={24} color={colors.primary} /></TouchableOpacity>
-          <TouchableOpacity onPress={() => setMoney('send')}><Ionicons name="cash-outline" size={26} color={colors.primary} /></TouchableOpacity>
-        </View>) : undefined 
+        <TouchableOpacity onPress={() => setMoney('send')} style={{ marginRight: 16 }}>
+          <Ionicons name="cash-outline" size={26} color={colors.primary} />
+        </TouchableOpacity>
+      ) : undefined 
     });
-  }, [navigation, title, isGroup, id, peerUsername, peerName, colors, isOnline, lastSeen]);
+  }, [navigation, title, isGroup, id, peerUsername, peerName, colors, isOnline, lastSeen, peerAvatar]);
 
   const load = useCallback(async () => {
     const { data } = await api.get(`/conversations/${id}/messages`);
