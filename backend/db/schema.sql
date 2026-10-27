@@ -143,3 +143,4 @@ CREATE TABLE IF NOT EXISTS story_reactions (
 );
 
 ALTER TABLE users ADD COLUMN last_seen timestamptz;
+ALTER TABLE conversations ADD COLUMN avatar_url text;

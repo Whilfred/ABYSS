@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useLayoutEffect, useState } from 'react'
 import { ActionSheetIOS, Alert, FlatList, Platform, Text, TouchableOpacity, View, TextInput, ScrollView, Image } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
-import * as ImagePicker from 'expo-image-picker'; // <-- IMPORT POUR LES STORIES
+import * as ImagePicker from 'expo-image-picker';
 import { api, fcfa, errMsg } from '../api';
 import { useAuth } from '../auth';
 import { Avatar } from '../components/UI';
@@ -74,12 +74,11 @@ export default function ChatsScreen({ navigation }) {
     });
   }, [navigation, colors]);
 
-  // --- FONCTION : Ajouter une story ---
   const addStory = async () => {
     try {
       const result = await ImagePicker.launchImageLibraryAsync({ 
         mediaTypes: ['images', 'videos'], 
-        quality: 1, // Qualité maximale
+        quality: 1,
         allowsEditing: true,
       });
 
@@ -107,9 +106,7 @@ export default function ChatsScreen({ navigation }) {
     }
   };
 
-  // --- FONCTION : Voir une story ---
   const viewStory = (index) => {
-    // On groupe les stories par utilisateur pour le lecteur
     navigation.navigate('StoryViewer', { stories, initialIndex: index });
   };
 
@@ -125,7 +122,6 @@ export default function ChatsScreen({ navigation }) {
       <View style={{ paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: colors.border, backgroundColor: colors.surface }}>
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ paddingHorizontal: 12 }}>
           
-          {/* Bouton "Ma story" */}
           <TouchableOpacity 
             onPress={addStory} 
             disabled={uploadingStory}
@@ -141,7 +137,6 @@ export default function ChatsScreen({ navigation }) {
             <Text style={{ color: colors.text, fontSize: 12, marginTop: 5, fontWeight: '600' }}>Ma story</Text>
           </TouchableOpacity>
 
-          {/* Liste des stories des autres */}
           {stories.map((story, index) => (
             <TouchableOpacity 
               key={story.id} 
@@ -216,10 +211,15 @@ export default function ChatsScreen({ navigation }) {
               }}
             >
               <View>
+                {/* MODIFIÉ : Utilisation de c.avatar_url pour les groupes */}
                 <Avatar 
                   name={title} 
                   size={54} 
-                  uri={c.type === 'direct' && c.peer?.avatar_url ? SERVER_URL + c.peer.avatar_url : null} 
+                  uri={
+                    c.type === 'group' 
+                      ? (c.avatar_url ? SERVER_URL + c.avatar_url : null) 
+                      : (c.peer?.avatar_url ? SERVER_URL + c.peer.avatar_url : null)
+                  } 
                 />
                 {c.type === 'group' && (
                   <View style={{ position: 'absolute', bottom: -2, right: -2, backgroundColor: colors.surface, borderRadius: 10, padding: 2 }}>

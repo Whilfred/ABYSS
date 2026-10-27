@@ -7,7 +7,7 @@ r.use(requireAuth);
 
 r.get('/', async (req, res) => {
   const { rows } = await db.query(
-    `SELECT c.id, c.type, c.name,
+    `SELECT c.id, c.type, c.name, c.avatar_url,
        (SELECT json_build_object('id',u.id,'username',u.username,'display_name',u.display_name,'avatar_url',u.avatar_url, 'last_seen', u.last_seen)
           FROM conversation_members x JOIN users u ON u.id=x.user_id
           WHERE x.conversation_id=c.id AND x.user_id<>$1 LIMIT 1) AS peer,
@@ -149,13 +149,13 @@ r.get('/:id/members', async (req, res) => {
   res.json(members);
 });
 
-// 2. Récupérer les infos d'un groupe
+// 2. Récupérer les infos d'un groupe (MODIFIÉ : avec avatar_url)
 r.get('/:id/info', async (req, res) => {
   const { id } = req.params;
   if (!(await isMember(db, id, req.userId))) throw new AppError('Accès refusé', 403);
 
   const { rows } = await db.query(
-    `SELECT c.id, c.type, c.name, c.created_at, c.created_by,
+    `SELECT c.id, c.type, c.name, c.avatar_url, c.created_at, c.created_by,
        (SELECT json_build_object('username', u.username, 'display_name', u.display_name, 'avatar_url', u.avatar_url)
         FROM users u WHERE u.id = c.created_by) AS creator,
        (SELECT count(*)::int FROM conversation_members WHERE conversation_id=c.id) AS member_count
@@ -167,7 +167,7 @@ r.get('/:id/info', async (req, res) => {
   res.json(rows[0]);
 });
 
-// 3. Quitter un groupe (NOUVEAU)
+// 3. Quitter un groupe
 r.post('/:id/leave', async (req, res) => {
   const { id } = req.params;
   const { rowCount } = await db.query(
@@ -176,6 +176,35 @@ r.post('/:id/leave', async (req, res) => {
   );
   if (rowCount === 0) throw new AppError('Vous n\'êtes pas membre de ce groupe', 404);
   res.json({ ok: true });
+});
+
+// 4. Changer la photo du groupe (NOUVEAU)
+r.post('/:id/avatar', async (req, res) => {
+  const { id } = req.params;
+  const { avatar_url } = req.body;
+  if (!avatar_url) throw new AppError('URL manquante');
+
+  // Vérifier que l'utilisateur est le créateur du groupe
+  const conv = (await db.query('SELECT created_by FROM conversations WHERE id=$1', [id])).rows[0];
+  if (!conv) throw new AppError('Groupe introuvable', 404);
+  if (conv.created_by !== req.userId) throw new AppError('Seul le créateur peut modifier la photo du groupe', 403);
+
+  await db.query('UPDATE conversations SET avatar_url=$1 WHERE id=$2', [avatar_url, id]);
+  res.json({ ok: true, avatar_url });
+});
+
+// 5. Modifier le nom du groupe (NOUVEAU)
+r.put('/:id/info', async (req, res) => {
+  const { id } = req.params;
+  const { name } = req.body;
+  if (!name || name.trim().length < 2) throw new AppError('Nom invalide');
+
+  const conv = (await db.query('SELECT created_by FROM conversations WHERE id=$1', [id])).rows[0];
+  if (!conv) throw new AppError('Groupe introuvable', 404);
+  if (conv.created_by !== req.userId) throw new AppError('Seul le créateur peut modifier le nom du groupe', 403);
+
+  await db.query('UPDATE conversations SET name=$1 WHERE id=$2', [name.trim(), id]);
+  res.json({ ok: true, name: name.trim() });
 });
 
 module.exports = r;

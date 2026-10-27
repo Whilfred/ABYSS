@@ -124,6 +124,7 @@ export default function ChatScreen({ route, navigation }) {
   const [isOnline, setIsOnline] = useState(false);
   const [lastSeen, setLastSeen] = useState(null);
   const [peerAvatar, setPeerAvatar] = useState(null);
+  const [groupAvatar, setGroupAvatar] = useState(null); // <-- NOUVEAU
   const isGroup = type === 'group';
 
   useEffect(() => {
@@ -135,6 +136,15 @@ export default function ChatScreen({ route, navigation }) {
       }).catch(() => {});
     }
   }, [peerUsername, isGroup]);
+
+  // --- NOUVEAU : Charger l'avatar du groupe ---
+  useEffect(() => {
+    if (isGroup) {
+      api.get(`/conversations/${id}/info`).then(r => {
+        setGroupAvatar(r.data.avatar_url);
+      }).catch(() => {});
+    }
+  }, [id, isGroup]);
 
   useEffect(() => {
     if (!socket || isGroup) return;
@@ -172,7 +182,19 @@ export default function ChatScreen({ route, navigation }) {
             }
           }}
         >
-          {!isGroup && (
+          {/* --- MODIFIÉ : Affichage de l'avatar pour les groupes ET les discussions --- */}
+          {isGroup ? (
+            groupAvatar ? (
+              <Image 
+                source={{ uri: SERVER_URL + groupAvatar }} 
+                style={{ width: 36, height: 36, borderRadius: 18, marginRight: 10 }} 
+              />
+            ) : (
+              <View style={{ width: 36, height: 36, borderRadius: 18, backgroundColor: colors.primary, alignItems: 'center', justifyContent: 'center', marginRight: 10 }}>
+                <Ionicons name="people" size={20} color="#fff" />
+              </View>
+            )
+          ) : (
             <Image 
               source={{ uri: peerAvatar ? SERVER_URL + peerAvatar : 'https://ui-avatars.com/api/?name=' + title }} 
               style={{ width: 36, height: 36, borderRadius: 18, marginRight: 10 }} 
@@ -187,14 +209,13 @@ export default function ChatScreen({ route, navigation }) {
           </View>
         </TouchableOpacity>
       ),
-      // --- MODIFIÉ : Une seule icône pour envoyer de l'argent ---
       headerRight: !isGroup ? () => (
         <TouchableOpacity onPress={() => setMoney('send')} style={{ marginRight: 16 }}>
           <Ionicons name="cash-outline" size={26} color={colors.primary} />
         </TouchableOpacity>
       ) : undefined 
     });
-  }, [navigation, title, isGroup, id, peerUsername, peerName, colors, isOnline, lastSeen, peerAvatar]);
+  }, [navigation, title, isGroup, id, peerUsername, peerName, colors, isOnline, lastSeen, peerAvatar, groupAvatar]); // <-- Ajout de groupAvatar
 
   const load = useCallback(async () => {
     const { data } = await api.get(`/conversations/${id}/messages`);
