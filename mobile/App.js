@@ -12,6 +12,7 @@ import RegisterScreen from './src/screens/RegisterScreen';
 import ChatsScreen from './src/screens/ChatsScreen';
 import ChatScreen from './src/screens/ChatScreen';
 import ChatInfoScreen from './src/screens/ChatInfoScreen';
+import GroupInfoScreen from './src/screens/GroupInfoScreen'; // <-- AJOUT
 import NewChatScreen from './src/screens/NewChatScreen';
 import NewGroupScreen from './src/screens/NewGroupScreen';
 import WalletScreen from './src/screens/WalletScreen';
@@ -19,7 +20,7 @@ import DepositScreen from './src/screens/DepositScreen';
 import WithdrawScreen from './src/screens/WithdrawScreen';
 import ProfileScreen from './src/screens/ProfileScreen';
 import SettingsScreen from './src/screens/SettingsScreen';
-import StoryViewerScreen from './src/screens/StoryViewerScreen'; // <-- AJOUT
+import StoryViewerScreen from './src/screens/StoryViewerScreen';
 
 const Stack = createNativeStackNavigator();
 const Tab = createBottomTabNavigator();
@@ -70,13 +71,15 @@ function Root() {
           <Stack.Screen name="Tabs" component={Tabs} options={{ headerShown: false }} />
           <Stack.Screen name="Chat" component={ChatScreen} />
           <Stack.Screen name="ChatInfo" component={ChatInfoScreen} options={{ title: 'Infos de la discussion', headerBackTitle: 'Retour' }} />
+          
+          {/* AJOUT DE L'ÉCRAN GROUP INFO */}
+          <Stack.Screen name="GroupInfo" component={GroupInfoScreen} options={{ title: 'Infos du groupe' }} />
+          
           <Stack.Screen name="NewChat" component={NewChatScreen} options={{ title: 'Nouvelle discussion' }} />
           <Stack.Screen name="NewGroup" component={NewGroupScreen} options={{ title: 'Nouveau groupe' }} />
           <Stack.Screen name="Deposit" component={DepositScreen} options={{ title: 'Déposer' }} />
           <Stack.Screen name="Withdraw" component={WithdrawScreen} options={{ title: 'Retirer' }} />
           <Stack.Screen name="Settings" component={SettingsScreen} options={{ title: 'Paramètres' }} />
-          
-          {/* AJOUT DE L'ÉCRAN STORY VIEWER (plein écran, sans header) */}
           <Stack.Screen name="StoryViewer" component={StoryViewerScreen} options={{ headerShown: false, animation: 'fade' }} />
         </>
       ) : (

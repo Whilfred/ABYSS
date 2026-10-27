@@ -141,3 +141,5 @@ CREATE TABLE IF NOT EXISTS story_reactions (
   created_at timestamptz NOT NULL DEFAULT now(),
   PRIMARY KEY (story_id, user_id) -- Une seule réaction par utilisateur par story
 );
+
+ALTER TABLE users ADD COLUMN last_seen timestamptz;

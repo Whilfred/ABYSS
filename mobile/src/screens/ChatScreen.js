@@ -8,13 +8,13 @@ import * as Sharing from 'expo-sharing';
 import { api, errMsg, fcfa } from '../api';
 import { SERVER_URL } from '../config';
 import { useAuth } from '../auth';
+import { useTheme } from '../ThemeContext';
 import MoneyModal from '../components/MoneyModal';
 import PinModal from '../components/PinModal';
-import { colors } from '../theme';
 
 const hhmm = (d) => new Date(d).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
 
-function Bubble({ m, mine, isGroup, read, onPay, onDecline }) {
+function Bubble({ m, mine, isGroup, read, onPay, onDecline, colors, user }) {
   const isMoney = m.type === 'money';
   const isReq = m.type === 'money_request';
   const isImage = m.type === 'image';
@@ -39,7 +39,15 @@ function Bubble({ m, mine, isGroup, read, onPay, onDecline }) {
   };
 
   return (
-    <View style={{ alignSelf: mine ? 'flex-end' : 'flex-start', maxWidth: '82%', marginVertical: 4, marginHorizontal: 10 }}>
+    <View style={{ flexDirection: 'row', alignSelf: mine ? 'flex-end' : 'flex-start', maxWidth: '85%', marginVertical: 4, marginHorizontal: 10 }}>
+      
+      {isGroup && !mine && (
+        <Image 
+          source={{ uri: m.sender_avatar ? SERVER_URL + m.sender_avatar : 'https://ui-avatars.com/api/?name=' + m.sender_name }} 
+          style={{ width: 32, height: 32, borderRadius: 16, marginRight: 8, alignSelf: 'flex-end' }} 
+        />
+      )}
+
       <View style={{ 
         backgroundColor: bg, 
         borderRadius: 18, 
@@ -76,7 +84,7 @@ function Bubble({ m, mine, isGroup, read, onPay, onDecline }) {
           </View>
         ) : isFile ? (
           <TouchableOpacity onPress={downloadFile} style={{ flexDirection: 'row', alignItems: 'center', padding: 8, minWidth: 220 }}>
-            <View style={{ width: 44, height: 44, borderRadius: 12, backgroundColor: mine ? 'rgba(255,255,255,0.2)' : '#E8EFFF', alignItems: 'center', justifyContent: 'center' }}>
+            <View style={{ width: 44, height: 44, borderRadius: 12, backgroundColor: mine ? 'rgba(255,255,255,0.2)' : colors.surface, alignItems: 'center', justifyContent: 'center' }}>
               <Ionicons name="document-text" size={24} color={fg} />
             </View>
             <View style={{ marginLeft: 12, flex: 1 }}>
@@ -102,6 +110,8 @@ function Bubble({ m, mine, isGroup, read, onPay, onDecline }) {
 export default function ChatScreen({ route, navigation }) {
   const { id, title, type, peerUsername, peerName } = route.params;
   const { user, socket } = useAuth();
+  const { colors } = useTheme();
+  
   const [msgs, setMsgs] = useState([]);
   const [reads, setReads] = useState({});
   const [text, setText] = useState('');
@@ -111,18 +121,60 @@ export default function ChatScreen({ route, navigation }) {
   const [busy, setBusy] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [showAttach, setShowAttach] = useState(false); 
+  const [isOnline, setIsOnline] = useState(false);
+  const [lastSeen, setLastSeen] = useState(null);
   const isGroup = type === 'group';
 
   useEffect(() => {
+    if (!isGroup && peerUsername) {
+      api.get(`/users/${peerUsername}`).then(r => {
+        setLastSeen(r.data.last_seen);
+        setIsOnline(r.data.last_seen === null);
+      }).catch(() => {});
+    }
+  }, [peerUsername, isGroup]);
+
+  useEffect(() => {
+    if (!socket || isGroup) return;
+    const onPresence = (data) => {
+      if (data.user_id && (data.user_id === peerUsername || data.user_id === peerName)) {
+        setIsOnline(data.online);
+        setLastSeen(data.last_seen);
+      }
+    };
+    socket.on('user:presence', onPresence);
+    return () => socket.off('user:presence', onPresence);
+  }, [socket, isGroup, peerUsername, peerName]);
+
+  useEffect(() => {
+    const formatLastSeen = (date) => {
+      if (!date) return 'vu récemment';
+      const d = new Date(date);
+      const now = new Date();
+      const diff = now - d;
+      if (diff < 60000) return 'vu à l\'instant';
+      if (diff < 3600000) return `vu il y a ${Math.floor(diff / 60000)} min`;
+      if (d.toDateString() === now.toDateString()) return `vu à ${d.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}`;
+      return `vu le ${d.toLocaleDateString('fr-FR')}`;
+    };
+
     navigation.setOptions({ 
-      title: '', // On vide le titre par défaut
       headerTitle: () => (
         <TouchableOpacity 
           style={{ alignItems: 'center' }} 
-          onPress={() => navigation.navigate('ChatInfo', { id, title, type, peerUsername, peerName })}
+          onPress={() => {
+            // --- MODIFIÉ : Redirection conditionnelle ---
+            if (isGroup) {
+              navigation.navigate('GroupInfo', { id, title });
+            } else {
+              navigation.navigate('ChatInfo', { id, title, type, peerUsername, peerName });
+            }
+          }}
         >
           <Text style={{ fontSize: 16, fontWeight: '700', color: colors.text }}>{title}</Text>
-          <Text style={{ fontSize: 12, color: colors.muted }}>Appuyez pour les infos</Text>
+          <Text style={{ fontSize: 12, color: colors.muted }}>
+            {isGroup ? 'Appuyez pour les infos' : (isOnline ? 'En ligne' : formatLastSeen(lastSeen))}
+          </Text>
         </TouchableOpacity>
       ),
       headerRight: !isGroup ? () => (
@@ -131,7 +183,7 @@ export default function ChatScreen({ route, navigation }) {
           <TouchableOpacity onPress={() => setMoney('send')}><Ionicons name="cash-outline" size={26} color={colors.primary} /></TouchableOpacity>
         </View>) : undefined 
     });
-  }, [navigation, title, isGroup, id, peerUsername, peerName]);
+  }, [navigation, title, isGroup, id, peerUsername, peerName, colors, isOnline, lastSeen]);
 
   const load = useCallback(async () => {
     const { data } = await api.get(`/conversations/${id}/messages`);
@@ -210,23 +262,23 @@ export default function ChatScreen({ route, navigation }) {
     { text: 'Refuser', style: 'destructive', onPress: () => api.post(`/wallet/requests/${m.meta.request_id}/decline`).catch((e) => Alert.alert('Erreur', errMsg(e))) }]);
 
   return (
-    <KeyboardAvoidingView style={{ flex: 1, backgroundColor: '#F4F6F9' }} behavior={Platform.OS === 'ios' ? 'padding' : undefined} keyboardVerticalOffset={90}>
+    <KeyboardAvoidingView style={{ flex: 1, backgroundColor: colors.bg }} behavior={Platform.OS === 'ios' ? 'padding' : undefined} keyboardVerticalOffset={90}>
       <FlatList inverted data={msgs} keyExtractor={(m) => m.id} contentContainerStyle={{ paddingVertical: 12 }}
         renderItem={({ item }) => (
-          <Bubble m={item} mine={item.sender_id === user.id} isGroup={isGroup} read={isRead(item)}
+          <Bubble m={item} mine={item.sender_id === user.id} isGroup={isGroup} read={isRead(item)} colors={colors} user={user}
             onPay={(m) => { setPinErr(''); setPayFor(m); }} onDecline={decline} />)} />
       
       {showAttach && (
-        <View style={{ flexDirection: 'row', padding: 20, backgroundColor: '#fff', borderTopWidth: 1, borderTopColor: colors.border }}>
+        <View style={{ flexDirection: 'row', padding: 20, backgroundColor: colors.surface, borderTopWidth: 1, borderTopColor: colors.border }}>
           <TouchableOpacity onPress={() => handleUpload('image')} style={{ alignItems: 'center', marginRight: 30 }}>
-            <View style={{ width: 50, height: 50, borderRadius: 25, backgroundColor: '#E8EFFF', alignItems: 'center', justifyContent: 'center', marginBottom: 5 }}>
+            <View style={{ width: 50, height: 50, borderRadius: 25, backgroundColor: colors.bg, alignItems: 'center', justifyContent: 'center', marginBottom: 5 }}>
               <Ionicons name="image" size={24} color={colors.primary} />
             </View>
             <Text style={{ color: colors.text, fontSize: 12 }}>Photo</Text>
           </TouchableOpacity>
           
           <TouchableOpacity onPress={() => handleUpload('file')} style={{ alignItems: 'center' }}>
-            <View style={{ width: 50, height: 50, borderRadius: 25, backgroundColor: '#E8EFFF', alignItems: 'center', justifyContent: 'center', marginBottom: 5 }}>
+            <View style={{ width: 50, height: 50, borderRadius: 25, backgroundColor: colors.bg, alignItems: 'center', justifyContent: 'center', marginBottom: 5 }}>
               <Ionicons name="document" size={24} color={colors.primary} />
             </View>
             <Text style={{ color: colors.text, fontSize: 12 }}>Document</Text>
@@ -234,13 +286,13 @@ export default function ChatScreen({ route, navigation }) {
         </View>
       )}
 
-      <View style={{ flexDirection: 'row', padding: 10, alignItems: 'flex-end', backgroundColor: '#fff', borderTopWidth: 1, borderTopColor: colors.border }}>
+      <View style={{ flexDirection: 'row', padding: 10, alignItems: 'flex-end', backgroundColor: colors.surface, borderTopWidth: 1, borderTopColor: colors.border }}>
         <TouchableOpacity onPress={() => setShowAttach(!showAttach)} style={{ marginRight: 10, marginBottom: 10 }}>
           <Ionicons name={showAttach ? "close-circle" : "add-circle"} size={32} color={colors.primary} />
         </TouchableOpacity>
 
         <TextInput value={text} onChangeText={setText} placeholder={uploading ? "Envoi en cours..." : "Message"} placeholderTextColor={colors.muted} multiline editable={!uploading}
-          style={{ flex: 1, backgroundColor: colors.surface, borderRadius: 22, paddingHorizontal: 16, paddingTop: 12, paddingBottom: 12, maxHeight: 120, fontSize: 16 }} />
+          style={{ flex: 1, backgroundColor: colors.bg, borderRadius: 22, paddingHorizontal: 16, paddingTop: 12, paddingBottom: 12, maxHeight: 120, fontSize: 16, color: colors.text }} />
         
         <TouchableOpacity onPress={send} disabled={!text.trim() || uploading} style={{ marginLeft: 10, width: 46, height: 46, borderRadius: 23, backgroundColor: colors.primary, alignItems: 'center', justifyContent: 'center', opacity: (text.trim() && !uploading) ? 1 : 0.5 }}>
           <Ionicons name="send" size={20} color="#fff" />

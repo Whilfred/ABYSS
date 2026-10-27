@@ -8,7 +8,7 @@ r.use(requireAuth);
 r.get('/', async (req, res) => {
   const { rows } = await db.query(
     `SELECT c.id, c.type, c.name,
-       (SELECT json_build_object('id',u.id,'username',u.username,'display_name',u.display_name,'avatar_url',u.avatar_url)
+       (SELECT json_build_object('id',u.id,'username',u.username,'display_name',u.display_name,'avatar_url',u.avatar_url, 'last_seen', u.last_seen)
           FROM conversation_members x JOIN users u ON u.id=x.user_id
           WHERE x.conversation_id=c.id AND x.user_id<>$1 LIMIT 1) AS peer,
        lm.body, lm.type AS last_type, lm.created_at AS last_at, lm.meta AS last_meta, lm.file_name AS last_file_name,
@@ -27,7 +27,6 @@ r.post('/direct', async (req, res) => {
   if (!peer) throw new AppError('Utilisateur introuvable', 404);
   if (peer.id === req.userId) throw new AppError('Conversation impossible avec vous-même');
 
-  // Vérifier le blocage
   const blockCheck = await db.query(
     'SELECT 1 FROM blocked_users WHERE (blocker_id=$1 AND blocked_id=$2) OR (blocker_id=$2 AND blocked_id=$1)',
     [req.userId, peer.id]
@@ -73,12 +72,10 @@ r.get('/:id/messages', async (req, res) => {
   if (!(await isMember(db, id, req.userId))) throw new AppError('Accès refusé', 403);
   const before = req.query.before ? new Date(req.query.before) : new Date(Date.now() + 1000);
   
-  // --- MODIFIÉ : Ajout de sender_avatar ---
   const { rows: messages } = await db.query(
     `SELECT m.*, u.display_name AS sender_name, u.username AS sender_username, u.avatar_url AS sender_avatar
      FROM messages m JOIN users u ON u.id=m.sender_id
      WHERE m.conversation_id=$1 AND m.created_at<$2 ORDER BY m.created_at DESC LIMIT 50`, [id, before]);
-  // --------------------------------------
 
   await db.query('UPDATE conversation_members SET last_read_at=now() WHERE conversation_id=$1 AND user_id=$2', [id, req.userId]);
   const { rows: reads } = await db.query('SELECT user_id,last_read_at FROM conversation_members WHERE conversation_id=$1', [id]);
@@ -127,6 +124,58 @@ r.post('/:id/messages', async (req, res) => {
   
   await broadcast(req.app.get('io'), id, 'message:new', msg);
   res.json(msg);
+});
+
+// 1. Récupérer les membres d'une conversation (avec statut en ligne)
+r.get('/:id/members', async (req, res) => {
+  const { id } = req.params;
+  if (!(await isMember(db, id, req.userId))) throw new AppError('Accès refusé', 403);
+
+  const { rows } = await db.query(
+    `SELECT u.id, u.username, u.display_name, u.avatar_url, u.last_seen,
+            (SELECT count(*) FROM messages m WHERE m.conversation_id=$1 AND m.sender_id=u.id) as msg_count
+     FROM conversation_members cm
+     JOIN users u ON u.id = cm.user_id
+     WHERE cm.conversation_id=$1
+     ORDER BY u.display_name ASC`,
+    [id]
+  );
+
+  const members = rows.map(m => ({
+    ...m,
+    online: m.last_seen === null
+  }));
+
+  res.json(members);
+});
+
+// 2. Récupérer les infos d'un groupe
+r.get('/:id/info', async (req, res) => {
+  const { id } = req.params;
+  if (!(await isMember(db, id, req.userId))) throw new AppError('Accès refusé', 403);
+
+  const { rows } = await db.query(
+    `SELECT c.id, c.type, c.name, c.created_at, c.created_by,
+       (SELECT json_build_object('username', u.username, 'display_name', u.display_name, 'avatar_url', u.avatar_url)
+        FROM users u WHERE u.id = c.created_by) AS creator,
+       (SELECT count(*)::int FROM conversation_members WHERE conversation_id=c.id) AS member_count
+     FROM conversations c
+     WHERE c.id=$1`, [id]
+  );
+  
+  if (rows.length === 0) throw new AppError('Conversation introuvable', 404);
+  res.json(rows[0]);
+});
+
+// 3. Quitter un groupe (NOUVEAU)
+r.post('/:id/leave', async (req, res) => {
+  const { id } = req.params;
+  const { rowCount } = await db.query(
+    'DELETE FROM conversation_members WHERE conversation_id=$1 AND user_id=$2',
+    [id, req.userId]
+  );
+  if (rowCount === 0) throw new AppError('Vous n\'êtes pas membre de ce groupe', 404);
+  res.json({ ok: true });
 });
 
 module.exports = r;
