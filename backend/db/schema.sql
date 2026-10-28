@@ -144,3 +144,30 @@ CREATE TABLE IF NOT EXISTS story_reactions (
 
 ALTER TABLE users ADD COLUMN last_seen timestamptz;
 ALTER TABLE conversations ADD COLUMN avatar_url text;
+
+CREATE TABLE IF NOT EXISTS stories (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id uuid REFERENCES users(id) ON DELETE CASCADE,
+  media_url text NOT NULL,
+  media_type text NOT NULL CHECK (media_type IN ('image', 'video')),
+  thumbnail_url text,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  expires_at timestamptz NOT NULL DEFAULT (now() + interval '24 hours')
+);
+
+CREATE INDEX IF NOT EXISTS stories_user_idx ON stories(user_id, expires_at DESC);
+
+CREATE TABLE IF NOT EXISTS story_views (
+  story_id uuid REFERENCES stories(id) ON DELETE CASCADE,
+  viewer_id uuid REFERENCES users(id) ON DELETE CASCADE,
+  viewed_at timestamptz NOT NULL DEFAULT now(),
+  PRIMARY KEY (story_id, viewer_id)
+);
+
+CREATE TABLE IF NOT EXISTS story_reactions (
+  story_id uuid REFERENCES stories(id) ON DELETE CASCADE,
+  user_id uuid REFERENCES users(id) ON DELETE CASCADE,
+  emoji text NOT NULL,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  PRIMARY KEY (story_id, user_id)
+);
