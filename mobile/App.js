@@ -5,11 +5,13 @@ import { NavigationContainer, DefaultTheme, DarkTheme } from '@react-navigation/
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { Ionicons } from '@expo/vector-icons';
+import { useSafeAreaInsets } from 'react-native-safe-area-context'; // <-- IMPORT SAFE AREA
 import { AuthProvider, useAuth } from './src/auth';
 import { ThemeProvider, useTheme } from './src/ThemeContext'; 
+import { initDB } from './src/db';
 import LoginScreen from './src/screens/LoginScreen';
 import RegisterScreen from './src/screens/RegisterScreen';
-import HomeScreen from './src/screens/HomeScreen'; // <-- AJOUT
+import HomeScreen from './src/screens/HomeScreen';
 import ChatsScreen from './src/screens/ChatsScreen';
 import ChatScreen from './src/screens/ChatScreen';
 import ChatInfoScreen from './src/screens/ChatInfoScreen';
@@ -28,16 +30,21 @@ const Tab = createBottomTabNavigator();
 
 function Tabs() {
   const { colors } = useTheme(); 
+  const insets = useSafeAreaInsets(); // <-- RÉCUPÉRATION DES MARGES
   
   return (
     <Tab.Navigator screenOptions={({ route }) => ({
       tabBarActiveTintColor: colors.primary,
       tabBarInactiveTintColor: colors.muted,
-      tabBarStyle: { backgroundColor: colors.surface, borderTopColor: colors.border },
+      tabBarStyle: { 
+        backgroundColor: colors.surface, 
+        borderTopColor: colors.border,
+        height: 60 + insets.bottom, // <-- AJOUT HAUTEUR
+        paddingBottom: insets.bottom, // <-- AJOUT PADDING
+      },
       headerStyle: { backgroundColor: colors.surface },
       headerTitleStyle: { fontWeight: '800', color: colors.primary },
       tabBarIcon: ({ color, size }) => {
-        // Attribution des icônes selon l'onglet
         let iconName;
         if (route.name === 'Accueil') iconName = 'home';
         else if (route.name === 'Discussions') iconName = 'chatbubbles';
@@ -121,6 +128,10 @@ function Navigation() {
 }
 
 export default function App() {
+  React.useEffect(() => {
+    initDB();
+  }, []);
+
   return (
     <ThemeProvider>
       <AuthProvider>

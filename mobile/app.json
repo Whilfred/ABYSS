@@ -25,7 +25,8 @@
       ],
       "expo-font",
       "expo-sharing",
-      "expo-video"
+      "expo-video",
+      "expo-sqlite"
     ],
     "extra": {
       "eas": {

@@ -1,6 +1,7 @@
 import React, { useState, useLayoutEffect } from 'react';
-import { Alert, ScrollView, Text, View, TouchableOpacity, Platform } from 'react-native';
+import { ActivityIndicator, Alert, KeyboardAvoidingView, Platform, ScrollView, Text, TouchableOpacity, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { useHeaderHeight } from '@react-navigation/elements';
 import * as ImagePicker from 'expo-image-picker';
 import { Avatar, Button, Input } from '../components/UI';
 import { api, errMsg } from '../api';
@@ -9,13 +10,75 @@ import { byCode } from '../countries';
 import { useTheme } from '../ThemeContext';
 import { SERVER_URL } from '../config';
 
-const COVER_HEIGHT = 160;
-const AVATAR_SIZE = 112;
+const softShadow = { shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.08, shadowRadius: 6, elevation: 2 };
+
+const AVATAR_SIZE = 88;
+
+/* ------------------------------------------------------------------ */
+/*  Composants définis HORS de l'écran : sinon ils sont recréés à       */
+/*  chaque frappe et le clavier se ferme dans les champs du PIN.        */
+/* ------------------------------------------------------------------ */
+
+function Section({ title, footer, children, P }) {
+  return (
+    <View style={{ marginTop: 24, marginHorizontal: 16 }}>
+      {title ? <Text style={{ color: P.ink, fontSize: 16, fontWeight: '800', marginBottom: 10, marginLeft: 4 }}>{title}</Text> : null}
+      <View style={{ backgroundColor: P.card, borderRadius: 22, overflow: 'hidden', ...softShadow }}>{children}</View>
+      {footer ? <Text style={{ color: P.muted, fontSize: 13, lineHeight: 18, marginTop: 8, marginHorizontal: 6 }}>{footer}</Text> : null}
+    </View>
+  );
+}
+
+// Icône cerclée : contour fin, ni carré coloré ni aplat
+function Ring({ icon, color, size = 38 }) {
+  return (
+    <View style={{ width: size, height: size, borderRadius: size / 2, borderWidth: 1.5, borderColor: color, alignItems: 'center', justifyContent: 'center' }}>
+      <Ionicons name={icon} size={size * 0.5} color={color} />
+    </View>
+  );
+}
+
+function Row({ icon, label, value, onPress, right, last, danger, P }) {
+  const tone = danger ? P.bad : P.link;
+  return (
+    <TouchableOpacity activeOpacity={onPress ? 0.6 : 1} onPress={onPress} style={{ flexDirection: 'row', alignItems: 'center', paddingLeft: 16 }}>
+      <Ring icon={icon} color={tone} />
+      <View
+        style={{
+          flex: 1, flexDirection: 'row', alignItems: 'center', marginLeft: 14, paddingVertical: 14, paddingRight: 16,
+          borderBottomWidth: last ? 0 : 1, borderBottomColor: P.line,
+        }}
+      >
+        <View style={{ flex: 1 }}>
+          {value !== undefined ? <Text style={{ color: P.muted, fontSize: 12 }}>{label}</Text> : null}
+          <Text style={{ color: danger ? P.bad : P.ink, fontSize: 16, fontWeight: value !== undefined ? '600' : '600', marginTop: value !== undefined ? 1 : 0 }}>
+            {value !== undefined ? (value || '—') : label}
+          </Text>
+        </View>
+        {right}
+      </View>
+    </TouchableOpacity>
+  );
+}
+
+/* ------------------------------------------------------------------ */
 
 export default function ProfileScreen({ navigation }) {
   const { user, logout, refreshUser } = useAuth();
   const { colors } = useTheme();
-  const success = colors.success || '#12B76A';
+  // Couleurs directement issues du thème de la plateforme (bleu par défaut)
+  const P = {
+    page: colors.bg,
+    card: colors.surface,
+    ink: colors.text,
+    muted: colors.muted,
+    line: colors.border,
+    primary: colors.primary,
+    link: colors.primary,
+    ok: colors.success || '#12B76A',
+    bad: colors.danger || '#F04438',
+  };
+  const headerHeight = useHeaderHeight();
 
   const [current, setCurrent] = useState('');
   const [pin, setPin] = useState('');
@@ -29,15 +92,16 @@ export default function ProfileScreen({ navigation }) {
 
   useLayoutEffect(() => {
     navigation.setOptions({
-      headerTitle: user.display_name,
+      headerTitle: '',
       headerShadowVisible: false,
+      headerStyle: { backgroundColor: P.page },
       headerRight: () => (
         <TouchableOpacity onPress={() => navigation.navigate('Settings')} style={{ marginRight: 16, padding: 4 }}>
-          <Ionicons name="settings-outline" size={24} color={colors.primary} />
+          <Ionicons name="settings-outline" size={24} color={P.link} />
         </TouchableOpacity>
       ),
     });
-  }, [navigation, colors, user.display_name]);
+  }, [navigation, P]);
 
   const changeAvatar = async () => {
     try {
@@ -84,147 +148,120 @@ export default function ProfileScreen({ navigation }) {
       { text: 'Se déconnecter', style: 'destructive', onPress: logout },
     ]);
 
-  // --- Petits composants internes ---
-  const Section = ({ title, children }) => (
-    <View style={{ marginTop: 22, paddingHorizontal: 16 }}>
-      <Text style={{ fontSize: 19, fontWeight: '800', color: colors.text, marginBottom: 10 }}>{title}</Text>
-      <View style={{ backgroundColor: colors.surface, borderRadius: 14, overflow: 'hidden' }}>{children}</View>
-    </View>
-  );
-
-  const Row = ({ icon, label, value, onPress, right, last, danger }) => (
-    <TouchableOpacity
-      activeOpacity={onPress ? 0.6 : 1}
-      onPress={onPress}
-      style={{
-        flexDirection: 'row', alignItems: 'center', paddingVertical: 14, paddingHorizontal: 14,
-        borderBottomWidth: last ? 0 : 1, borderBottomColor: colors.border,
-      }}
-    >
-      <View style={{
-        width: 38, height: 38, borderRadius: 19, alignItems: 'center', justifyContent: 'center',
-        backgroundColor: danger ? colors.danger + '1A' : colors.primary + '1A',
-      }}>
-        <Ionicons name={icon} size={20} color={danger ? colors.danger : colors.primary} />
-      </View>
-      <View style={{ flex: 1, marginLeft: 12 }}>
-        <Text style={{ color: danger ? colors.danger : colors.text, fontSize: 16, fontWeight: '600' }}>{label}</Text>
-        {value ? <Text style={{ color: colors.muted, fontSize: 14, marginTop: 2 }}>{value}</Text> : null}
-      </View>
-      {right}
-    </TouchableOpacity>
-  );
-
   return (
-    <ScrollView style={{ flex: 1, backgroundColor: colors.bg }} contentContainerStyle={{ paddingBottom: 48 }}>
-      {/* Couverture */}
-      <View style={{ height: COVER_HEIGHT, backgroundColor: colors.primary, overflow: 'hidden' }}>
-        <View style={{ position: 'absolute', right: -50, top: -60, width: 220, height: 220, borderRadius: 110, backgroundColor: 'rgba(255,255,255,0.10)' }} />
-        <View style={{ position: 'absolute', right: 70, bottom: -90, width: 190, height: 190, borderRadius: 95, backgroundColor: 'rgba(255,255,255,0.07)' }} />
-        <View style={{ position: 'absolute', left: -40, bottom: -50, width: 140, height: 140, borderRadius: 70, backgroundColor: 'rgba(0,0,0,0.08)' }} />
-      </View>
-
-      {/* Avatar à cheval sur la couverture */}
-      <View style={{ paddingHorizontal: 16, marginTop: -(AVATAR_SIZE / 2) }}>
-        <TouchableOpacity onPress={changeAvatar} disabled={uploadingAvatar} activeOpacity={0.85} style={{ alignSelf: 'flex-start' }}>
-          <View style={{ padding: 4, backgroundColor: colors.bg, borderRadius: (AVATAR_SIZE + 8) / 2 }}>
-            <Avatar
-              name={user.display_name}
-              size={AVATAR_SIZE}
-              uri={user.avatar_url ? SERVER_URL + user.avatar_url : null}
+    <KeyboardAvoidingView style={{ flex: 1, backgroundColor: P.page }} behavior="padding" keyboardVerticalOffset={headerHeight}>
+      <ScrollView contentContainerStyle={{ paddingBottom: 48 }} keyboardShouldPersistTaps="handled" keyboardDismissMode="on-drag">
+        {/* Carte d'identité : anneaux concentriques comme des ondes dans l'eau */}
+        <View style={{ marginHorizontal: 16, marginTop: 4, backgroundColor: P.primary, borderRadius: 28, overflow: 'hidden', ...softShadow, shadowOpacity: 0.18 }}>
+          {[260, 190, 120].map((s, i) => (
+            <View
+              key={s}
+              style={{
+                position: 'absolute', right: -s / 2 + 20, top: -s / 2 + 30, width: s, height: s, borderRadius: s / 2,
+                borderWidth: 1.5, borderColor: `rgba(255,255,255,${0.12 - i * 0.025})`,
+              }}
             />
-          </View>
-          <View style={{
-            position: 'absolute', bottom: 6, right: 2, width: 34, height: 34, borderRadius: 17,
-            backgroundColor: colors.surface, borderWidth: 3, borderColor: colors.bg,
-            alignItems: 'center', justifyContent: 'center',
-          }}>
-            <Ionicons name={uploadingAvatar ? 'hourglass-outline' : 'camera'} size={17} color={colors.text} />
-          </View>
-        </TouchableOpacity>
+          ))}
 
-        <Text style={{ fontSize: 28, fontWeight: '800', color: colors.text, marginTop: 10 }}>{user.display_name}</Text>
-        <Text style={{ fontSize: 16, color: colors.muted, marginTop: 2 }}>@{user.username}</Text>
-        <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 8 }}>
-          <Ionicons name="location-sharp" size={16} color={colors.muted} />
-          <Text style={{ color: colors.muted, fontSize: 15, marginLeft: 4 }}>{c.flag} {c.name}</Text>
+          <View style={{ padding: 22, flexDirection: 'row', alignItems: 'center' }}>
+            <TouchableOpacity onPress={changeAvatar} disabled={uploadingAvatar} activeOpacity={0.85}>
+              <View style={{ padding: 3, borderRadius: (AVATAR_SIZE + 6) / 2, borderWidth: 2, borderColor: 'rgba(255,255,255,0.85)' }}>
+                <Avatar name={user.display_name} size={AVATAR_SIZE} uri={user.avatar_url ? SERVER_URL + user.avatar_url : null} />
+                {uploadingAvatar ? (
+                  <View style={{ position: 'absolute', top: 3, left: 3, right: 3, bottom: 3, borderRadius: AVATAR_SIZE / 2, backgroundColor: 'rgba(0,0,0,0.5)', alignItems: 'center', justifyContent: 'center' }}>
+                    <ActivityIndicator color="#fff" />
+                  </View>
+                ) : null}
+              </View>
+              <View style={{ position: 'absolute', bottom: 0, right: 0, width: 30, height: 30, borderRadius: 15, backgroundColor: '#fff', alignItems: 'center', justifyContent: 'center', borderWidth: 3, borderColor: P.primary }}>
+                <Ionicons name="camera" size={14} color={P.primary} />
+              </View>
+            </TouchableOpacity>
+
+            <View style={{ flex: 1, marginLeft: 18 }}>
+              <Text style={{ color: '#fff', fontSize: 23, fontWeight: '800' }} numberOfLines={2}>{user.display_name}</Text>
+              <Text style={{ color: 'rgba(255,255,255,0.85)', fontSize: 15, fontWeight: '600', marginTop: 3 }}>@{user.username}</Text>
+              <Text style={{ color: 'rgba(255,255,255,0.75)', fontSize: 14, marginTop: 6 }}>{c.flag} {c.name}</Text>
+            </View>
+          </View>
         </View>
-      </View>
 
-      {/* Actions principales */}
-      <View style={{ flexDirection: 'row', paddingHorizontal: 16, marginTop: 18, gap: 10 }}>
+        {/* Portefeuille : l'action principale */}
         <TouchableOpacity
           onPress={() => navigation.navigate('Portefeuille')}
           activeOpacity={0.85}
-          style={{ flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', backgroundColor: colors.primary, paddingVertical: 12, borderRadius: 10 }}
+          style={{ marginHorizontal: 16, marginTop: 14, flexDirection: 'row', alignItems: 'center', backgroundColor: P.card, borderRadius: 22, paddingVertical: 16, paddingHorizontal: 18, ...softShadow }}
         >
-          <Ionicons name="wallet" size={18} color="#fff" />
-          <Text style={{ color: '#fff', fontWeight: '700', fontSize: 15, marginLeft: 8 }}>Mon portefeuille</Text>
+          <View style={{ width: 44, height: 44, borderRadius: 22, backgroundColor: P.primary, alignItems: 'center', justifyContent: 'center' }}>
+            <Ionicons name="wallet" size={22} color="#fff" />
+          </View>
+          <View style={{ flex: 1, marginLeft: 14 }}>
+            <Text style={{ color: P.ink, fontSize: 17, fontWeight: '800' }}>Mon portefeuille</Text>
+            <Text style={{ color: P.muted, fontSize: 13, marginTop: 2 }}>Envoyer, recevoir, retirer</Text>
+          </View>
+          <Ionicons name="arrow-forward" size={22} color={P.primary} />
         </TouchableOpacity>
-        <TouchableOpacity
-          onPress={changeAvatar}
-          activeOpacity={0.85}
-          style={{ flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', backgroundColor: colors.surface, paddingVertical: 12, borderRadius: 10 }}
+
+        {/* Informations */}
+        <Section title="Informations" P={P}>
+          <Row icon="call-outline" label="Téléphone" value={user.phone} P={P} />
+          <Row icon="at" label="Nom d'utilisateur" value={`@${user.username}`} P={P} />
+          <Row icon="flag-outline" label="Pays" value={`${c.flag} ${c.name}`} last P={P} />
+        </Section>
+
+        {/* Sécurité */}
+        <Section
+          title="Sécurité"
+          footer={user.has_pin ? 'Le code PIN protège vos envois et vos retraits.' : "Créez un code PIN pour envoyer ou retirer de l'argent."}
+          P={P}
         >
-          <Ionicons name="pencil" size={17} color={colors.text} />
-          <Text style={{ color: colors.text, fontWeight: '700', fontSize: 15, marginLeft: 8 }}>Changer la photo</Text>
-        </TouchableOpacity>
-      </View>
-
-      {/* Informations */}
-      <Section title="Informations">
-        <Row icon="person-outline" label="Nom d'utilisateur" value={`@${user.username}`} />
-        <Row icon="call-outline" label="Téléphone" value={user.phone} />
-        <Row icon="flag-outline" label="Pays" value={`${c.flag} ${c.name}`} last />
-      </Section>
-
-      {/* Sécurité */}
-      <Section title="Sécurité">
-        <Row
-          icon="lock-closed-outline"
-          label="Code PIN du portefeuille"
-          value={user.has_pin ? 'Protège vos envois et retraits' : 'À créer pour envoyer ou retirer de l\'argent'}
-          onPress={() => setPinOpen((o) => !o)}
-          last={!pinOpen}
-          right={
-            <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-              <View style={{
-                backgroundColor: (user.has_pin ? success : colors.danger) + '1F',
-                paddingHorizontal: 10, paddingVertical: 4, borderRadius: 12, marginRight: 6,
-              }}>
-                <Text style={{ color: user.has_pin ? success : colors.danger, fontWeight: '700', fontSize: 12 }}>
+          <Row
+            icon="lock-closed-outline"
+            label="Code PIN du portefeuille"
+            onPress={() => setPinOpen((o) => !o)}
+            last={!pinOpen}
+            P={P}
+            right={
+              <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: user.has_pin ? P.ok : P.bad, marginRight: 6 }} />
+                <Text style={{ color: user.has_pin ? P.ok : P.bad, fontSize: 14, fontWeight: '600', marginRight: 6 }}>
                   {user.has_pin ? 'Activé' : 'Non défini'}
                 </Text>
+                <Ionicons name={pinOpen ? 'chevron-up' : 'chevron-down'} size={18} color={P.muted} />
               </View>
-              <Ionicons name={pinOpen ? 'chevron-up' : 'chevron-down'} size={20} color={colors.muted} />
+            }
+          />
+          {pinOpen ? (
+            <View style={{ padding: 16 }}>
+              {user.has_pin ? (
+                <Input label="PIN actuel" value={current} onChangeText={digits(setCurrent)} keyboardType="number-pad" secureTextEntry />
+              ) : null}
+              <Input label="Nouveau PIN (4 chiffres)" value={pin} onChangeText={digits(setPin)} keyboardType="number-pad" secureTextEntry />
+              <Input label="Confirmer le PIN" value={confirm} onChangeText={digits(setConfirm)} keyboardType="number-pad" secureTextEntry />
+              <Button
+                title={user.has_pin ? 'Modifier le PIN' : 'Créer le PIN'}
+                onPress={savePin}
+                loading={loading}
+                disabled={pin.length !== 4 || confirm.length !== 4 || (user.has_pin && current.length !== 4)}
+              />
             </View>
-          }
-        />
-        {pinOpen ? (
-          <View style={{ padding: 14 }}>
-            {user.has_pin ? (
-              <Input label="PIN actuel" value={current} onChangeText={digits(setCurrent)} keyboardType="number-pad" secureTextEntry />
-            ) : null}
-            <Input label="Nouveau PIN (4 chiffres)" value={pin} onChangeText={digits(setPin)} keyboardType="number-pad" secureTextEntry />
-            <Input label="Confirmer le PIN" value={confirm} onChangeText={digits(setConfirm)} keyboardType="number-pad" secureTextEntry />
-            <Button
-              title={user.has_pin ? 'Modifier le PIN' : 'Créer le PIN'}
-              onPress={savePin}
-              loading={loading}
-              disabled={pin.length !== 4 || confirm.length !== 4 || (user.has_pin && current.length !== 4)}
-            />
-          </View>
-        ) : null}
-      </Section>
+          ) : null}
+        </Section>
 
-      {/* Compte */}
-      <Section title="Compte">
-        <Row icon="settings-outline" label="Paramètres" onPress={() => navigation.navigate('Settings')}
-          right={<Ionicons name="chevron-forward" size={20} color={colors.muted} />} />
-        <Row icon="log-out-outline" label="Se déconnecter" onPress={confirmLogout} danger last />
-      </Section>
+        {/* Compte */}
+        <Section title="Compte" P={P}>
+          <Row
+            icon="settings-outline"
+            label="Paramètres"
+            onPress={() => navigation.navigate('Settings')}
+            P={P}
+            right={<Ionicons name="chevron-forward" size={18} color={P.muted} />}
+          />
+          <Row icon="log-out-outline" label="Se déconnecter" onPress={confirmLogout} danger last P={P} />
+        </Section>
 
-      <Text style={{ textAlign: 'center', color: colors.muted, fontSize: 12, marginTop: 26 }}>ABYSS · Version 1.0.0</Text>
-    </ScrollView>
+        <Text style={{ textAlign: 'center', color: P.muted, fontSize: 12, marginTop: 28 }}>ABYSS · Version 1.0.0</Text>
+      </ScrollView>
+    </KeyboardAvoidingView>
   );
 }
