@@ -109,7 +109,6 @@ export default function HomeScreen({ navigation }) {
         setUploadingStory(true);
         const file = result.assets[0];
         
-        // --- DÉTECTION MANUELLE DU TYPE ---
         const uri = file.uri;
         const extension = uri.split('.').pop().toLowerCase();
         let mimeType = 'image/jpeg';
@@ -125,7 +124,6 @@ export default function HomeScreen({ navigation }) {
           mimeType = 'image/gif';
           fileName = `story_${Date.now()}.gif`;
         }
-        // -----------------------------------
 
         const formData = new FormData();
         formData.append('media', {
@@ -143,7 +141,6 @@ export default function HomeScreen({ navigation }) {
         Alert.alert('Succès', 'Votre story a été publiée !');
       }
     } catch (e) {
-      // --- LOG D'ERREUR DÉTAILLÉ ---
       console.log('ERREUR UPLOAD DÉTAILLÉE:', e.response?.data || e.message);
       Alert.alert('Erreur', "L'envoi a échoué. Vérifiez la console Expo pour plus de détails.");
     } finally {
@@ -188,6 +185,12 @@ export default function HomeScreen({ navigation }) {
     const isVideo = item.media_type === 'video';
     const isMyStory = item.user_id === user?.id;
     const canSend = !!messageText.trim() && !sendingMsg;
+    
+    // --- CORRECTION : GESTION DES URLS ---
+    const mediaUri = item.media_url.startsWith('http') 
+      ? item.media_url 
+      : SERVER_URL + item.media_url;
+    // ------------------------------------
 
     return (
       <View style={{ flexDirection: 'row', paddingHorizontal: 10, marginBottom: 10, alignItems: 'flex-end' }}>
@@ -221,13 +224,13 @@ export default function HomeScreen({ navigation }) {
           >
             {isVideo ? (
               <FeedVideo
-                uri={SERVER_URL + item.media_url}
+                uri={mediaUri} // <-- Utilisation de l'URL corrigée
                 isVisible={index === visibleIndex}
                 isScreenFocused={isFocused}
               />
             ) : (
               <Image
-                source={{ uri: SERVER_URL + item.media_url }}
+                source={{ uri: mediaUri }} // <-- Utilisation de l'URL corrigée
                 style={{ width: '100%', height: 340 }}
                 resizeMode="cover"
               />
