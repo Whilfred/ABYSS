@@ -109,13 +109,25 @@ export default function HomeScreen({ navigation }) {
         setUploadingStory(true);
         const file = result.assets[0];
         
-        const isVideo = file.type === 'video';
-        const fileName = file.fileName || (isVideo ? `video_${Date.now()}.mp4` : `image_${Date.now()}.jpg`);
-        const mimeType = file.mimeType || (isVideo ? 'video/mp4' : 'image/jpeg');
+        const uri = file.uri;
+        const extension = uri.split('.').pop().toLowerCase();
+        let mimeType = 'image/jpeg';
+        let fileName = `story_${Date.now()}.jpg`;
+        
+        if (extension === 'mp4' || extension === 'mov' || extension === 'm4v') {
+          mimeType = 'video/mp4';
+          fileName = `story_${Date.now()}.mp4`;
+        } else if (extension === 'png') {
+          mimeType = 'image/png';
+          fileName = `story_${Date.now()}.png`;
+        } else if (extension === 'gif') {
+          mimeType = 'image/gif';
+          fileName = `story_${Date.now()}.gif`;
+        }
 
         const formData = new FormData();
         formData.append('media', {
-          uri: Platform.OS === 'ios' ? file.uri.replace('file://', '') : file.uri,
+          uri: Platform.OS === 'ios' ? uri.replace('file://', '') : uri,
           name: fileName,
           type: mimeType,
         });
@@ -129,7 +141,7 @@ export default function HomeScreen({ navigation }) {
         Alert.alert('Succès', 'Votre story a été publiée !');
       }
     } catch (e) {
-      console.log(e);
+      console.log('ERREUR UPLOAD:', e.response?.data || e.message);
       Alert.alert('Erreur', "L'envoi a échoué. Vérifiez que le serveur est réveillé ou que le fichier n'est pas trop lourd.");
     } finally {
       setUploadingStory(false);
