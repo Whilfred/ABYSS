@@ -7,36 +7,32 @@ const helmet = require('helmet');
 const rateLimit = require('express-rate-limit');
 const { Server } = require('socket.io');
 const { verify } = require('./auth');
-const db = require('./db'); // <-- IMPORT DB POUR LA PRESENCE
-
-// --- AJOUT FICHIERS ---
+const db = require('./db');
 const multer = require('multer');
-const path = require('path');
-const fs = require('fs');
+const cloudinary = require('cloudinary').v2; // <-- IMPORT CLOUDINARY
 
 if (!process.env.JWT_SECRET) { console.error('JWT_SECRET manquant (.env)'); process.exit(1); }
+
+// Configuration de Cloudinary
+cloudinary.config({
+  cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
+  api_key: process.env.CLOUDINARY_API_KEY,
+  api_secret: process.env.CLOUDINARY_API_SECRET
+});
 
 const app = express();
 const server = http.createServer(app);
 const io = new Server(server, { cors: { origin: '*' } });
 app.set('io', io);
 
-// --- AJOUT FICHIERS ---
-const uploadDir = path.join(__dirname, '../uploads');
-if (!fs.existsSync(uploadDir)) { fs.mkdirSync(uploadDir); }
-
-const storage = multer.diskStorage({
-  destination: (req, file, cb) => cb(null, uploadDir),
-  filename: (req, file, cb) => {
-    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
-    cb(null, uniqueSuffix + path.extname(file.originalname));
-  }
-});
-
-const upload = multer({ storage, limits: { fileSize: 100 * 1024 * 1024 } }); 
+// --- CONFIGURATION MULTER (MÉMOIRE) ---
+// On garde le fichier en mémoire (buffer) pour l'envoyer à Cloudinary
+const upload = multer({ 
+  storage: multer.memoryStorage(), 
+  limits: { fileSize: 100 * 1024 * 1024 } // 100 Mo
+}); 
 
 // --- GESTION DE LA PRESENCE ---
-// On stocke le nombre de connexions par utilisateur pour gérer les onglets multiples
 const connectedUsers = new Map(); 
 
 io.use((socket, next) => {
@@ -46,18 +42,13 @@ io.use((socket, next) => {
 
 io.on('connection', async (socket) => {
   const userId = socket.userId;
-  
-  // Rejoindre sa room personnelle
   socket.join('user:' + userId);
 
-  // Gérer la présence
   const count = connectedUsers.get(userId) || 0;
   connectedUsers.set(userId, count + 1);
 
   if (count === 0) {
-    // C'est sa première connexion : il est en ligne
     await db.query('UPDATE users SET last_seen = NULL WHERE id = $1', [userId]);
-    // On prévient tout le monde qu'il est en ligne
     io.emit('user:presence', { user_id: userId, online: true, last_seen: null });
   }
 
@@ -67,7 +58,6 @@ io.on('connection', async (socket) => {
     
     if (newCount <= 0) {
       connectedUsers.delete(userId);
-      // Il est hors ligne
       const now = new Date();
       await db.query('UPDATE users SET last_seen = $1 WHERE id = $2', [now, userId]);
       io.emit('user:presence', { user_id: userId, online: false, last_seen: now });
@@ -76,24 +66,41 @@ io.on('connection', async (socket) => {
     }
   });
 });
-// ---------------------------------
 
 app.use(helmet({ crossOriginResourcePolicy: false })); 
 app.use(cors());
 app.use(express.json({ limit: '100kb' }));
-app.use('/api/stories', require('./routes/stories'));
 
-app.use('/uploads', express.static(uploadDir));
-
-app.post('/api/upload', upload.single('fichier'), (req, res) => {
+// Route d'upload vers Cloudinary
+app.post('/api/upload', upload.single('fichier'), async (req, res) => {
   if (!req.file) return res.status(400).json({ error: 'Aucun fichier fourni' });
-  res.json({ 
-    url: `/uploads/${req.file.filename}`,
-    name: req.file.originalname,
-    type: req.file.mimetype
-  });
+
+  try {
+    // On envoie le fichier (buffer) à Cloudinary
+    const result = await new Promise((resolve, reject) => {
+      const uploadStream = cloudinary.uploader.upload_stream(
+        { resource_type: 'auto', folder: 'abyss' }, // 'auto' gère images et vidéos
+        (error, result) => {
+          if (error) reject(error);
+          else resolve(result);
+        }
+      );
+      uploadStream.end(req.file.buffer);
+    });
+
+    // On renvoie l'URL sécurisée fournie par Cloudinary
+    res.json({ 
+      url: result.secure_url,
+      name: req.file.originalname,
+      type: req.file.mimetype
+    });
+  } catch (error) {
+    console.error('Erreur Cloudinary:', error);
+    res.status(500).json({ error: 'Erreur lors de l\'upload vers Cloudinary' });
+  }
 });
 
+app.use('/api/stories', require('./routes/stories'));
 app.use('/api/auth', rateLimit({ windowMs: 15 * 60 * 1000, max: 50 }), require('./routes/auth'));
 app.use('/api/users', require('./routes/users'));
 app.use('/api/conversations', require('./routes/chats'));

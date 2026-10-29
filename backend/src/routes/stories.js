@@ -2,40 +2,49 @@ const r = require('express').Router();
 const db = require('../db');
 const { requireAuth } = require('../auth');
 const { AppError } = require('../services/wallet');
-const { createMessage, broadcast } = require('../services/chat'); // <-- IMPORT
+const { createMessage, broadcast } = require('../services/chat');
 const multer = require('multer');
-const path = require('path');
-const fs = require('fs');
+const cloudinary = require('cloudinary').v2; // <-- IMPORT CLOUDINARY
 
 r.use(requireAuth);
 
-// Configuration de Multer pour les stories
-const uploadDir = path.join(__dirname, '../../uploads');
-if (!fs.existsSync(uploadDir)) { fs.mkdirSync(uploadDir); }
-
-const storage = multer.diskStorage({
-  destination: (req, file, cb) => cb(null, uploadDir),
-  filename: (req, file, cb) => {
-    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
-    cb(null, 'story-' + uniqueSuffix + path.extname(file.originalname));
-  }
+// --- CONFIGURATION MULTER (MÉMOIRE) ---
+// On stocke le fichier en mémoire pour l'envoyer à Cloudinary
+const upload = multer({ 
+  storage: multer.memoryStorage(), 
+  limits: { fileSize: 100 * 1024 * 1024 } // 100 Mo
 });
 
-const upload = multer({ storage, limits: { fileSize: 100 * 1024 * 1024 } });
-
-// 1. Créer une story
+// 1. Créer une story (avec upload Cloudinary)
 r.post('/', upload.single('media'), async (req, res) => {
   if (!req.file) throw new AppError('Fichier manquant');
   
-  const mediaType = req.file.mimetype.startsWith('video') ? 'video' : 'image';
-  const mediaUrl = `/uploads/${req.file.filename}`;
-  
-  const { rows } = await db.query(
-    'INSERT INTO stories(user_id, media_url, media_type) VALUES($1, $2, $3) RETURNING *',
-    [req.userId, mediaUrl, mediaType]
-  );
-  
-  res.json(rows[0]);
+  try {
+    // On envoie le fichier à Cloudinary
+    const result = await new Promise((resolve, reject) => {
+      const uploadStream = cloudinary.uploader.upload_stream(
+        { resource_type: 'auto', folder: 'abyss_stories' }, 
+        (error, result) => {
+          if (error) reject(error);
+          else resolve(result);
+        }
+      );
+      uploadStream.end(req.file.buffer);
+    });
+
+    const mediaType = req.file.mimetype.startsWith('video') ? 'video' : 'image';
+    const mediaUrl = result.secure_url; // <-- L'URL Cloudinary
+    
+    const { rows } = await db.query(
+      'INSERT INTO stories(user_id, media_url, media_type) VALUES($1, $2, $3) RETURNING *',
+      [req.userId, mediaUrl, mediaType]
+    );
+    
+    res.json(rows[0]);
+  } catch (error) {
+    console.error('Erreur Cloudinary Story:', error);
+    throw new AppError("Erreur lors de l'upload de la story");
+  }
 });
 
 // 2. Récupérer les stories
@@ -88,28 +97,24 @@ r.post('/:id/react', async (req, res) => {
   const { emoji } = req.body;
   if (!emoji) return res.status(400).json({ error: 'Emoji manquant' });
 
-  // 1. Sauvegarder la réaction
   await db.query(
     `INSERT INTO story_reactions(story_id, user_id, emoji) VALUES($1, $2, $3)
      ON CONFLICT (story_id, user_id) DO UPDATE SET emoji=EXCLUDED.emoji, created_at=now()`,
     [id, req.userId, emoji]
   );
 
-  // 2. Trouver le propriétaire de la story
   const story = (await db.query('SELECT user_id FROM stories WHERE id=$1', [id])).rows[0];
   
   if (story) {
     const io = req.app.get('io');
     const user = (await db.query('SELECT username, display_name FROM users WHERE id=$1', [req.userId])).rows[0];
     
-    // 3. Envoyer l'événement Socket.io au propriétaire (pour l'animation)
     io.to('user:' + story.user_id).emit('story:reaction', {
       story_id: id,
       emoji,
       user: { username: user.username, display_name: user.display_name }
     });
 
-    // 4. Créer ou récupérer la conversation directe
     const key = [req.userId, story.user_id].sort().join(':');
     let conv = (await db.query('SELECT id FROM conversations WHERE direct_key=$1', [key])).rows[0];
     
@@ -123,16 +128,14 @@ r.post('/:id/react', async (req, res) => {
         [conv.id, req.userId, story.user_id]);
     }
 
-    // 5. Créer un message spécial dans la conversation
     const msg = await createMessage(db, {
       conversationId: conv.id,
       senderId: req.userId,
       body: `${emoji} a réagi à votre story`,
-      type: 'text', // On garde 'text' pour l'instant
+      type: 'text',
       meta: { story_id: id, action: 'story_reaction', emoji }
     });
 
-    // 6. Envoyer le message en temps réel à l'auteur
     await broadcast(io, conv.id, 'message:new', msg);
   }
 
