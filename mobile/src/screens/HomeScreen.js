@@ -1,5 +1,9 @@
-import React, { useCallback, useState, useRef, useEffect } from 'react';
-import { View, Text, FlatList, TouchableOpacity, Image, RefreshControl, TextInput, Alert, Animated, Platform } from 'react-native';
+import React, { useCallback, useState, useRef, useEffect, useLayoutEffect } from 'react';
+import {
+  View, Text, FlatList, TouchableOpacity, Image, RefreshControl,
+  TextInput, Alert, Animated, Platform, ScrollView, ActivityIndicator,
+  KeyboardAvoidingView, Dimensions
+} from 'react-native';
 import { useFocusEffect, useIsFocused } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import { useVideoPlayer, VideoView } from 'expo-video';
@@ -11,26 +15,29 @@ import { Avatar } from '../components/UI';
 import { useTheme } from '../ThemeContext';
 import { useAuth } from '../auth';
 
+const { width } = Dimensions.get('window');
 const REACTIONS = ['❤️', '😂', '😮', '😢', '🔥'];
+
+const fullUrl = (u) => (u ? (u.startsWith('http') ? u : SERVER_URL + u) : null);
 
 // --- ANIMATION DES RÉACTIONS ---
 function FloatingReaction({ emoji, startX, startY, onComplete }) {
   const translateY = useRef(new Animated.Value(0)).current;
   const translateX = useRef(new Animated.Value(0)).current;
   const opacity = useRef(new Animated.Value(1)).current;
-  const scale = useRef(new Animated.Value(0.5)).current;
+  const scale = useRef(new Animated.Value(0.4)).current;
   const rotate = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
-    const randomX = (Math.random() - 0.5) * 150;
-    const randomRotate = (Math.random() - 0.5) * 90;
+    const randomX = (Math.random() - 0.5) * 120;
+    const randomRotate = (Math.random() - 0.5) * 60;
 
     Animated.parallel([
-      Animated.timing(translateY, { toValue: -250 - Math.random() * 100, duration: 1500, useNativeDriver: true }),
-      Animated.timing(translateX, { toValue: randomX, duration: 1500, useNativeDriver: true }),
-      Animated.timing(opacity, { toValue: 0, duration: 1500, useNativeDriver: true }),
-      Animated.spring(scale, { toValue: 2, friction: 4, useNativeDriver: true }),
-      Animated.timing(rotate, { toValue: randomRotate, duration: 1500, useNativeDriver: true }),
+      Animated.timing(translateY, { toValue: -220 - Math.random() * 80, duration: 1200, useNativeDriver: true }),
+      Animated.timing(translateX, { toValue: randomX, duration: 1200, useNativeDriver: true }),
+      Animated.timing(opacity, { toValue: 0, duration: 1200, useNativeDriver: true }),
+      Animated.spring(scale, { toValue: 1.8, friction: 5, useNativeDriver: true }),
+      Animated.timing(rotate, { toValue: randomRotate, duration: 1200, useNativeDriver: true }),
     ]).start(() => onComplete());
   }, []);
 
@@ -42,32 +49,75 @@ function FloatingReaction({ emoji, startX, startY, onComplete }) {
       style={{
         position: 'absolute', left: startX, top: startY,
         transform: [{ translateY }, { translateX }, { scale }, { rotate: spin }],
-        opacity, zIndex: 999,
+        opacity, zIndex: 9999,
       }}
     >
-      <Text style={{ fontSize: 60 }}>{emoji}</Text>
+      <Text style={{ fontSize: 50 }}>{emoji}</Text>
     </Animated.View>
   );
 }
 
-// --- VIDÉO DANS LE FIL ---
-function FeedVideo({ uri, isVisible, isScreenFocused }) {
-  const player = useVideoPlayer(uri, (p) => {
-    p.loop = true;
-  });
+// --- MEDIA PLEIN ÉCRAN (Vidéo & Image) ---
+function FullMedia({ uri, isVideo, isVisible, isScreenFocused }) {
+  if (isVideo) {
+    const player = useVideoPlayer(uri, (p) => { p.loop = true; });
+    useEffect(() => {
+      if (isVisible && isScreenFocused) player.play();
+      else player.pause();
+    }, [isVisible, isScreenFocused, player]);
 
-  useEffect(() => {
-    if (isVisible && isScreenFocused) player.play();
-    else player.pause();
-  }, [isVisible, isScreenFocused, player]);
+    // Qualité vidéo intacte. Cover pour occuper l'espace.
+    return (
+      <VideoView
+        player={player}
+        style={{ width: '100%', height: 550 }}
+        contentFit="cover" 
+        nativeControls={false}
+      />
+    );
+  }
 
+  // Image affichée en entier (contain) sur fond noir, taille augmentée
   return (
-    <VideoView
-      player={player}
-      style={{ width: '100%', height: 340 }}
-      contentFit="cover"
-      nativeControls={false}
+    <Image
+      source={{ uri }}
+      style={{ width: '100%', height: 550, backgroundColor: '#000' }}
+      resizeMode="contain" 
     />
+  );
+}
+
+// --- BULLE DE STORY ---
+function StoryBubble({ label, uri, name, colors, ring = true, plus = false, onPress, onPlusPress }) {
+  return (
+    <TouchableOpacity onPress={onPress} activeOpacity={0.8} style={{ alignItems: 'center', marginRight: 14, width: 76 }}>
+      <View>
+        <View style={{ padding: 3, borderRadius: 40, borderWidth: 2.5, borderColor: ring ? colors.primary : 'transparent' }}>
+          <View style={{ padding: 2, borderRadius: 40, backgroundColor: colors.bg }}>
+            <Avatar name={name} size={60} uri={uri} />
+          </View>
+        </View>
+        {plus && (
+          <TouchableOpacity
+            onPress={onPlusPress}
+            activeOpacity={0.8}
+            hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+            style={{
+              position: 'absolute', right: 2, bottom: 2,
+              width: 24, height: 24, borderRadius: 12,
+              backgroundColor: colors.primary,
+              borderWidth: 2.5, borderColor: colors.bg,
+              alignItems: 'center', justifyContent: 'center',
+            }}
+          >
+            <Ionicons name="add" size={16} color="#fff" />
+          </TouchableOpacity>
+        )}
+      </View>
+      <Text numberOfLines={1} style={{ color: colors.text, fontSize: 12, marginTop: 5, textAlign: 'center' }}>
+        {label}
+      </Text>
+    </TouchableOpacity>
   );
 }
 
@@ -80,13 +130,17 @@ export default function HomeScreen({ navigation }) {
   const [stories, setStories] = useState([]);
   const [refreshing, setRefreshing] = useState(false);
   const [visibleIndex, setVisibleIndex] = useState(0);
-  const [messageText, setMessageText] = useState('');
+  const [messageText, setMessageText] = useState({});
   const [sendingMsg, setSendingMsg] = useState(false);
   const [activeReactions, setActiveReactions] = useState([]);
   const [uploadingStory, setUploadingStory] = useState(false);
 
+  useLayoutEffect(() => {
+    navigation.setOptions({ headerShown: false });
+  }, [navigation]);
+
   const loadStories = useCallback(() => {
-    return api.get('/stories').then(r => setStories(r.data)).catch(() => {});
+    return api.get('/stories').then((r) => setStories(r.data)).catch(() => {});
   }, []);
 
   useFocusEffect(useCallback(() => { loadStories(); }, [loadStories]));
@@ -99,22 +153,22 @@ export default function HomeScreen({ navigation }) {
 
   const addStory = async () => {
     try {
-      const result = await ImagePicker.launchImageLibraryAsync({ 
-        mediaTypes: ['images', 'videos'], 
-        quality: 0.8,
-        allowsEditing: true,
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ['images', 'videos'],
+        quality: 1, // Meilleure qualité pour les images
+        videoQuality: ImagePicker.UIImagePickerControllerQualityType.High, // Meilleure qualité pour les vidéos
+        allowsEditing: false, // Pas de rognage
       });
 
       if (!result.canceled) {
         setUploadingStory(true);
         const file = result.assets[0];
-        
         const uri = file.uri;
         const extension = uri.split('.').pop().toLowerCase();
         let mimeType = 'image/jpeg';
         let fileName = `story_${Date.now()}.jpg`;
-        
-        if (extension === 'mp4' || extension === 'mov' || extension === 'm4v') {
+
+        if (['mp4', 'mov', 'm4v'].includes(extension)) {
           mimeType = 'video/mp4';
           fileName = `story_${Date.now()}.mp4`;
         } else if (extension === 'png') {
@@ -136,13 +190,13 @@ export default function HomeScreen({ navigation }) {
           headers: { 'Content-Type': 'multipart/form-data' },
           timeout: 60000,
         });
-        
+
         await loadStories();
         Alert.alert('Succès', 'Votre story a été publiée !');
       }
     } catch (e) {
-      console.log('ERREUR UPLOAD DÉTAILLÉE:', e.response?.data || e.message);
-      Alert.alert('Erreur', "L'envoi a échoué. Vérifiez la console Expo pour plus de détails.");
+      console.log('ERREUR UPLOAD:', e.response?.data || e.message);
+      Alert.alert('Erreur', "L'envoi a échoué.");
     } finally {
       setUploadingStory(false);
     }
@@ -156,8 +210,8 @@ export default function HomeScreen({ navigation }) {
 
   const reactToStory = async (storyId, emoji, event) => {
     const { pageX, pageY } = event.nativeEvent;
-    const newReaction = { id: Date.now() + Math.random(), emoji, x: pageX - 30, y: pageY - 30 };
-    setActiveReactions(prev => [...prev, newReaction]);
+    const newReaction = { id: Date.now() + Math.random(), emoji, x: pageX - 25, y: pageY - 25 };
+    setActiveReactions((prev) => [...prev, newReaction]);
 
     try {
       await api.post(`/stories/${storyId}/react`, { emoji });
@@ -166,14 +220,15 @@ export default function HomeScreen({ navigation }) {
     }
   };
 
-  const sendDirectMessage = async (username) => {
-    if (!messageText.trim()) return;
+  const sendDirectMessage = async (storyId, username) => {
+    const text = messageText[storyId];
+    if (!text || !text.trim()) return;
     setSendingMsg(true);
     try {
       const convRes = await api.post('/conversations/direct', { username });
-      await api.post(`/conversations/${convRes.data.id}/messages`, { body: messageText, type: 'text' });
-      setMessageText('');
-      Alert.alert('Message envoyé', 'Votre message a été envoyé dans la conversation.');
+      await api.post(`/conversations/${convRes.data.id}/messages`, { body: text, type: 'text' });
+      setMessageText((prev) => ({ ...prev, [storyId]: '' }));
+      Alert.alert('Envoyé', 'Votre réponse a été transmise.');
     } catch (e) {
       Alert.alert('Erreur', errMsg(e));
     } finally {
@@ -181,196 +236,220 @@ export default function HomeScreen({ navigation }) {
     }
   };
 
-  const renderItem = ({ item, index }) => {
+  const openViewer = (storyIndex) => navigation.navigate('StoryViewer', { stories, initialIndex: storyIndex });
+
+  const renderFeedItem = ({ item, index }) => {
     const isVideo = item.media_type === 'video';
     const isMyStory = item.user_id === user?.id;
-    const canSend = !!messageText.trim() && !sendingMsg;
-    
-    // --- CORRECTION DES URLS (Images ET Avatars) ---
-    const mediaUri = item.media_url.startsWith('http') 
-      ? item.media_url 
-      : SERVER_URL + item.media_url;
+    const currentInputText = messageText[item.id] || '';
+    const canSend = !!currentInputText.trim() && !sendingMsg;
 
-    const avatarUri = item.avatar_url 
-      ? (item.avatar_url.startsWith('http') ? item.avatar_url : SERVER_URL + item.avatar_url)
-      : null;
-    // -----------------------------------------------
+    const mediaUri = fullUrl(item.media_url);
+    const avatarUri = fullUrl(item.avatar_url);
 
     return (
-      <View style={{ flexDirection: 'row', paddingHorizontal: 10, marginBottom: 10, alignItems: 'flex-end' }}>
-        <View style={{ marginRight: 8, marginBottom: 2 }}>
-          <Avatar
-            name={item.display_name}
-            size={38}
-            uri={avatarUri} // <-- Utilisation de l'URL corrigée
-          />
-        </View>
-
-        <View style={{
-          flex: 1,
-          backgroundColor: colors.surface,
-          borderRadius: 18,
-          borderBottomLeftRadius: 4,
-          overflow: 'hidden',
-        }}>
-          <View style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 12, paddingTop: 8, paddingBottom: 6 }}>
-            <Text style={{ flex: 1, fontWeight: '700', color: colors.primary, fontSize: 15 }} numberOfLines={1}>
+      <View style={{ marginBottom: 14, backgroundColor: colors.bg }}>
+        {/* En-tête (Avatar, Nom, Heure) */}
+        <View style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 12, paddingVertical: 10 }}>
+          <TouchableOpacity activeOpacity={0.8} onPress={() => openViewer(index)}>
+            <View style={{ padding: 2, borderRadius: 24, borderWidth: 2, borderColor: colors.primary }}>
+              <Avatar name={item.display_name} size={32} uri={avatarUri} />
+            </View>
+          </TouchableOpacity>
+          <View style={{ flex: 1, marginLeft: 10 }}>
+            <Text style={{ fontWeight: '700', color: colors.text, fontSize: 14 }} numberOfLines={1}>
               {isMyStory ? 'Vous' : item.display_name}
             </Text>
-            <Text style={{ color: colors.muted, fontSize: 12 }}>
+            <Text style={{ color: colors.muted, fontSize: 11.5, marginTop: 1 }}>
               {new Date(item.created_at).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}
             </Text>
           </View>
-
-          <TouchableOpacity
-            activeOpacity={0.9}
-            onPress={() => navigation.navigate('StoryViewer', { stories, initialIndex: index })}
-          >
-            {isVideo ? (
-              <FeedVideo
-                uri={mediaUri}
-                isVisible={index === visibleIndex}
-                isScreenFocused={isFocused}
-              />
-            ) : (
-              <Image
-                source={{ uri: mediaUri }}
-                style={{ width: '100%', height: 340 }}
-                resizeMode="cover"
-              />
-            )}
-            {isVideo && (
-              <View style={{ position: 'absolute', left: 10, bottom: 10, flexDirection: 'row', alignItems: 'center', backgroundColor: 'rgba(0,0,0,0.5)', borderRadius: 12, paddingHorizontal: 8, paddingVertical: 3 }}>
-                <Ionicons name="videocam" size={13} color="#fff" />
-                <Text style={{ color: '#fff', fontSize: 12, marginLeft: 4 }}>Vidéo</Text>
-              </View>
-            )}
-          </TouchableOpacity>
-
-          {!isMyStory && (
-            <View style={{ flexDirection: 'row', flexWrap: 'wrap', paddingHorizontal: 10, paddingTop: 8 }}>
-              {REACTIONS.map(emoji => (
-                <TouchableOpacity
-                  key={emoji}
-                  onPress={(e) => reactToStory(item.id, emoji, e)}
-                  activeOpacity={0.7}
-                  style={{
-                    paddingHorizontal: 10, paddingVertical: 4, borderRadius: 14,
-                    backgroundColor: colors.primary + '1F', marginRight: 6, marginBottom: 6,
-                  }}
-                >
-                  <Text style={{ fontSize: 18 }}>{emoji}</Text>
-                </TouchableOpacity>
-              ))}
-            </View>
-          )}
-
-          {!isMyStory ? (
-            <View style={{ flexDirection: 'row', alignItems: 'flex-end', paddingHorizontal: 8, paddingBottom: 8, paddingTop: 2 }}>
-              <TextInput
-                value={messageText}
-                onChangeText={setMessageText}
-                placeholder="Répondre…"
-                placeholderTextColor={colors.muted}
-                style={{
-                  flex: 1, backgroundColor: colors.bg, borderRadius: 20,
-                  paddingHorizontal: 14, paddingVertical: 8, color: colors.text, fontSize: 15, maxHeight: 80,
-                }}
-                multiline
-              />
-              <TouchableOpacity
-                onPress={() => sendDirectMessage(item.username)}
-                disabled={!canSend}
-                style={{
-                  marginLeft: 8, width: 38, height: 38, borderRadius: 19, backgroundColor: colors.primary,
-                  alignItems: 'center', justifyContent: 'center', opacity: canSend ? 1 : 0.45,
-                }}
-              >
-                <Ionicons name="send" size={17} color="#fff" style={{ marginLeft: 2 }} />
-              </TouchableOpacity>
-            </View>
-          ) : (
-            <View style={{ paddingHorizontal: 12, paddingVertical: 8 }}>
-              <Text style={{ color: colors.muted, fontSize: 13 }}>Votre story</Text>
-            </View>
-          )}
         </View>
+
+        {/* Média Plein Écran */}
+        <TouchableOpacity activeOpacity={0.95} onPress={() => openViewer(index)}>
+          <FullMedia
+            uri={mediaUri}
+            isVideo={isVideo}
+            isVisible={index === visibleIndex}
+            isScreenFocused={isFocused}
+          />
+          {isVideo && (
+            <View style={{ position: 'absolute', top: 12, right: 12, backgroundColor: 'rgba(0,0,0,0.55)', borderRadius: 14, padding: 6 }}>
+              <Ionicons name="videocam" size={16} color="#fff" />
+            </View>
+          )}
+        </TouchableOpacity>
+
+        {/* Barre d'actions (Réactions) */}
+        {!isMyStory ? (
+          <View style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 8, paddingTop: 8 }}>
+            {REACTIONS.map((emoji) => (
+              <TouchableOpacity
+                key={emoji}
+                onPress={(e) => reactToStory(item.id, emoji, e)}
+                activeOpacity={0.6}
+                hitSlop={{ top: 4, bottom: 4, left: 2, right: 2 }}
+                style={{ paddingHorizontal: 8, paddingVertical: 4 }}
+              >
+                <Text style={{ fontSize: 26 }}>{emoji}</Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+        ) : (
+          <View style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 14, paddingTop: 12 }}>
+            <Ionicons name="eye-outline" size={18} color={colors.muted} />
+            <Text style={{ color: colors.muted, fontSize: 13, marginLeft: 6 }}>Votre story</Text>
+          </View>
+        )}
+
+        {/* Zone de texte / Réponse */}
+        {!isMyStory && (
+          <View style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 12, paddingTop: 6 }}>
+            <Avatar name={user?.display_name || 'Moi'} size={26} uri={fullUrl(user?.avatar_url)} />
+            <TextInput
+              value={currentInputText}
+              onChangeText={(text) => setMessageText((prev) => ({ ...prev, [item.id]: text }))}
+              placeholder="Ajouter une réponse…"
+              placeholderTextColor={colors.muted}
+              style={{ flex: 1, marginLeft: 10, paddingVertical: 8, color: colors.text, fontSize: 14 }}
+            />
+            {sendingMsg && canSend === false && currentInputText ? (
+              <ActivityIndicator size="small" color={colors.primary} />
+            ) : (
+              <TouchableOpacity
+                onPress={() => sendDirectMessage(item.id, item.username)}
+                disabled={!canSend}
+                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                style={{ opacity: canSend ? 1 : 0 }}
+              >
+                <Text style={{ color: colors.primary, fontWeight: '700', fontSize: 14 }}>Envoyer</Text>
+              </TouchableOpacity>
+            )}
+          </View>
+        )}
       </View>
     );
   };
 
+  // Groupes de stories par utilisateur (rangée du haut)
+  const groupedStories = stories.reduce((acc, story) => {
+    if (!acc[story.user_id]) acc[story.user_id] = [];
+    acc[story.user_id].push(story);
+    return acc;
+  }, {});
+  const storyGroups = Object.values(groupedStories);
+  const myFirstIndex = stories.findIndex((s) => s.user_id === user?.id);
+  const otherGroups = storyGroups.filter((g) => g[0].user_id !== user?.id);
+
+  const renderTray = () => (
+    <View style={{ paddingTop: 12, paddingBottom: 12, marginBottom: 6, borderBottomWidth: 0.5, borderBottomColor: colors.border }}>
+      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ paddingHorizontal: 12 }}>
+        <StoryBubble
+          label="Votre story"
+          name={user?.display_name || 'Moi'}
+          uri={fullUrl(user?.avatar_url)}
+          colors={colors}
+          ring={myFirstIndex >= 0}
+          plus
+          onPress={() => (myFirstIndex >= 0 ? openViewer(myFirstIndex) : addStory())}
+          onPlusPress={addStory}
+        />
+        {otherGroups.map((group) => {
+          const first = group[0];
+          return (
+            <StoryBubble
+              key={first.user_id}
+              label={(first.display_name || '').split(' ')[0]}
+              name={first.display_name}
+              uri={fullUrl(first.avatar_url)}
+              colors={colors}
+              onPress={() => openViewer(stories.findIndex((s) => s.user_id === first.user_id))}
+            />
+          );
+        })}
+      </ScrollView>
+    </View>
+  );
+
   return (
-    <View style={{ flex: 1, backgroundColor: colors.bg }}>
-      <View style={{
-        paddingTop: Math.max(insets.top, 12),
-        paddingBottom: 10,
-        paddingHorizontal: 16,
-        backgroundColor: colors.surface,
-        borderBottomWidth: 0.5,
-        borderBottomColor: colors.border,
-      }}>
-        <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-          <View style={{ flex: 1 }}>
-            <Text style={{ fontSize: 20, fontWeight: '700', color: colors.text }}>ABYSS</Text>
-            <Text style={{ fontSize: 13, color: colors.muted, marginTop: 1 }}>
-              {stories.length} {stories.length > 1 ? 'stories' : 'story'}
-            </Text>
+    <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ flex: 1, backgroundColor: colors.bg }}>
+      {/* Barre du haut (ABYSS + icônes ajout/refresh) */}
+      <View
+        style={{
+          paddingTop: Math.max(insets.top, 12) + 4,
+          paddingBottom: 10,
+          paddingHorizontal: 16,
+          backgroundColor: colors.bg,
+          borderBottomWidth: 0.5,
+          borderBottomColor: colors.border,
+          zIndex: 10,
+        }}
+      >
+        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+          <Text style={{ fontSize: 28, fontWeight: '800', color: colors.text, letterSpacing: 1.5 }}>ABYSS</Text>
+          <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+            <TouchableOpacity onPress={addStory} disabled={uploadingStory} style={{ marginRight: 18 }} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+              {uploadingStory ? <ActivityIndicator size="small" color={colors.text} /> : <Ionicons name="add-circle-outline" size={27} color={colors.text} />}
+            </TouchableOpacity>
+            <TouchableOpacity onPress={loadStories} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+              <Ionicons name="reload" size={23} color={colors.text} />
+            </TouchableOpacity>
           </View>
-          <TouchableOpacity onPress={loadStories} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
-            <Ionicons name="refresh" size={23} color={colors.muted} />
-          </TouchableOpacity>
         </View>
       </View>
 
-      {activeReactions.map(r => (
+      {activeReactions.map((r) => (
         <FloatingReaction
           key={r.id}
           emoji={r.emoji}
           startX={r.x}
           startY={r.y}
-          onComplete={() => setActiveReactions(prev => prev.filter(item => item.id !== r.id))}
+          onComplete={() => setActiveReactions((prev) => prev.filter((item) => item.id !== r.id))}
         />
       ))}
 
       <FlatList
         data={stories}
         keyExtractor={(item) => String(item.id)}
-        contentContainerStyle={{ paddingTop: 10, paddingBottom: 100 }}
+        contentContainerStyle={{ paddingBottom: 60 }}
+        showsVerticalScrollIndicator={false}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.primary} />}
         onViewableItemsChanged={onViewableItemsChanged}
         viewabilityConfig={viewabilityConfig}
         keyboardShouldPersistTaps="handled"
+        ListHeaderComponent={renderTray}
         ListEmptyComponent={
-          <View style={{ alignItems: 'center', marginTop: 90, paddingHorizontal: 32 }}>
-            <Ionicons name="images-outline" size={64} color={colors.muted} />
-            <Text style={{ color: colors.muted, marginTop: 14, textAlign: 'center', fontSize: 16, lineHeight: 22 }}>
-              Aucune story pour le moment.{'\n'}Revenez plus tard !
+          <View style={{ alignItems: 'center', marginTop: 60, paddingHorizontal: 32 }}>
+            <View style={{ width: 96, height: 96, borderRadius: 48, borderWidth: 2, borderColor: colors.text, alignItems: 'center', justifyContent: 'center' }}>
+              <Ionicons name="camera-outline" size={46} color={colors.text} />
+            </View>
+            <Text style={{ color: colors.text, marginTop: 20, textAlign: 'center', fontSize: 20, fontWeight: '800' }}>Partagez une photo</Text>
+            <Text style={{ color: colors.muted, marginTop: 8, textAlign: 'center', fontSize: 14, lineHeight: 20 }}>
+              Publiez une photo ou une vidéo pour lancer votre fil.
             </Text>
+            <TouchableOpacity onPress={addStory} activeOpacity={0.8} style={{ marginTop: 16 }}>
+              <Text style={{ color: colors.primary, fontWeight: '700', fontSize: 15 }}>Publier une story</Text>
+            </TouchableOpacity>
           </View>
         }
-        renderItem={renderItem}
+        renderItem={renderFeedItem}
       />
 
-      {/* --- BOUTON FLOTTANT POUR AJOUTER UNE STORY --- */}
+      {/* Floating Action Button (FAB) : Gros bouton + en bas */}
       <TouchableOpacity
         onPress={addStory}
         disabled={uploadingStory}
+        activeOpacity={0.85}
         style={{
-          position: 'absolute',
-          right: 20,
-          bottom: Math.max(insets.bottom, 20) + 10,
-          width: 60,
-          height: 60,
-          borderRadius: 30,
-          backgroundColor: colors.primary,
-          alignItems: 'center',
-          justifyContent: 'center',
-          shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.3, shadowRadius: 5, elevation: 8,
+          position: 'absolute', right: 20, bottom: Math.max(insets.bottom, 20) + 10,
+          width: 64, height: 64, borderRadius: 32, backgroundColor: colors.primary,
+          alignItems: 'center', justifyContent: 'center',
+          shadowColor: colors.primary, shadowOffset: { width: 0, height: 6 }, shadowOpacity: 0.4, shadowRadius: 10, elevation: 8,
         }}
       >
-        <Ionicons name={uploadingStory ? "hourglass" : "add"} size={32} color="#fff" />
+        {uploadingStory ? <ActivityIndicator size="small" color="#fff" /> : <Ionicons name="add" size={34} color="#fff" />}
       </TouchableOpacity>
-
-    </View>
+    </KeyboardAvoidingView>
   );
 }
