@@ -109,6 +109,7 @@ export default function HomeScreen({ navigation }) {
         setUploadingStory(true);
         const file = result.assets[0];
         
+        // --- DÉTECTION MANUELLE DU TYPE ---
         const uri = file.uri;
         const extension = uri.split('.').pop().toLowerCase();
         let mimeType = 'image/jpeg';
@@ -124,6 +125,7 @@ export default function HomeScreen({ navigation }) {
           mimeType = 'image/gif';
           fileName = `story_${Date.now()}.gif`;
         }
+        // -----------------------------------
 
         const formData = new FormData();
         formData.append('media', {
@@ -141,8 +143,9 @@ export default function HomeScreen({ navigation }) {
         Alert.alert('Succès', 'Votre story a été publiée !');
       }
     } catch (e) {
-      console.log('ERREUR UPLOAD:', e.response?.data || e.message);
-      Alert.alert('Erreur', "L'envoi a échoué. Vérifiez que le serveur est réveillé ou que le fichier n'est pas trop lourd.");
+      // --- LOG D'ERREUR DÉTAILLÉ ---
+      console.log('ERREUR UPLOAD DÉTAILLÉE:', e.response?.data || e.message);
+      Alert.alert('Erreur', "L'envoi a échoué. Vérifiez la console Expo pour plus de détails.");
     } finally {
       setUploadingStory(false);
     }

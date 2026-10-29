@@ -4,12 +4,11 @@ const { requireAuth } = require('../auth');
 const { AppError } = require('../services/wallet');
 const { createMessage, broadcast } = require('../services/chat');
 const multer = require('multer');
-const cloudinary = require('cloudinary').v2; // <-- IMPORT CLOUDINARY
+const cloudinary = require('cloudinary').v2;
 
 r.use(requireAuth);
 
-// --- CONFIGURATION MULTER (MÉMOIRE) ---
-// On stocke le fichier en mémoire pour l'envoyer à Cloudinary
+// Configuration Multer (Mémoire)
 const upload = multer({ 
   storage: multer.memoryStorage(), 
   limits: { fileSize: 100 * 1024 * 1024 } // 100 Mo
@@ -17,6 +16,9 @@ const upload = multer({
 
 // 1. Créer une story (avec upload Cloudinary)
 r.post('/', upload.single('media'), async (req, res) => {
+  // --- LOG DE VÉRIFICATION ---
+  console.log('FICHIER REÇU:', req.file ? `${req.file.size} octets, type: ${req.file.mimetype}` : 'AUCUN FICHIER');
+  
   if (!req.file) throw new AppError('Fichier manquant');
   
   try {
@@ -33,7 +35,7 @@ r.post('/', upload.single('media'), async (req, res) => {
     });
 
     const mediaType = req.file.mimetype.startsWith('video') ? 'video' : 'image';
-    const mediaUrl = result.secure_url; // <-- L'URL Cloudinary
+    const mediaUrl = result.secure_url;
     
     const { rows } = await db.query(
       'INSERT INTO stories(user_id, media_url, media_type) VALUES($1, $2, $3) RETURNING *',
@@ -42,7 +44,8 @@ r.post('/', upload.single('media'), async (req, res) => {
     
     res.json(rows[0]);
   } catch (error) {
-    console.error('Erreur Cloudinary Story:', error);
+    // --- LOG D'ERREUR DÉTAILLÉ ---
+    console.error('ERREUR CLOUDINARY DÉTAIL:', error);
     throw new AppError("Erreur lors de l'upload de la story");
   }
 });
