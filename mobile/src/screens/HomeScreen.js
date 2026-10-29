@@ -1,9 +1,10 @@
 import React, { useCallback, useState, useRef, useEffect } from 'react';
-import { View, Text, FlatList, TouchableOpacity, Image, RefreshControl, TextInput, Alert, Animated } from 'react-native';
+import { View, Text, FlatList, TouchableOpacity, Image, RefreshControl, TextInput, Alert, Animated, Platform } from 'react-native';
 import { useFocusEffect, useIsFocused } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import { useVideoPlayer, VideoView } from 'expo-video';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import * as ImagePicker from 'expo-image-picker';
 import { api, errMsg } from '../api';
 import { SERVER_URL } from '../config';
 import { Avatar } from '../components/UI';
@@ -82,6 +83,7 @@ export default function HomeScreen({ navigation }) {
   const [messageText, setMessageText] = useState('');
   const [sendingMsg, setSendingMsg] = useState(false);
   const [activeReactions, setActiveReactions] = useState([]);
+  const [uploadingStory, setUploadingStory] = useState(false);
 
   const loadStories = useCallback(() => {
     return api.get('/stories').then(r => setStories(r.data)).catch(() => {});
@@ -93,6 +95,45 @@ export default function HomeScreen({ navigation }) {
     setRefreshing(true);
     await loadStories();
     setRefreshing(false);
+  };
+
+  const addStory = async () => {
+    try {
+      const result = await ImagePicker.launchImageLibraryAsync({ 
+        mediaTypes: ['images', 'videos'], 
+        quality: 0.8,
+        allowsEditing: true,
+      });
+
+      if (!result.canceled) {
+        setUploadingStory(true);
+        const file = result.assets[0];
+        
+        const isVideo = file.type === 'video';
+        const fileName = file.fileName || (isVideo ? `video_${Date.now()}.mp4` : `image_${Date.now()}.jpg`);
+        const mimeType = file.mimeType || (isVideo ? 'video/mp4' : 'image/jpeg');
+
+        const formData = new FormData();
+        formData.append('media', {
+          uri: Platform.OS === 'ios' ? file.uri.replace('file://', '') : file.uri,
+          name: fileName,
+          type: mimeType,
+        });
+
+        await api.post('/stories', formData, {
+          headers: { 'Content-Type': 'multipart/form-data' },
+          timeout: 60000,
+        });
+        
+        await loadStories();
+        Alert.alert('Succès', 'Votre story a été publiée !');
+      }
+    } catch (e) {
+      console.log(e);
+      Alert.alert('Erreur', "L'envoi a échoué. Vérifiez que le serveur est réveillé ou que le fichier n'est pas trop lourd.");
+    } finally {
+      setUploadingStory(false);
+    }
   };
 
   const onViewableItemsChanged = useRef(({ viewableItems }) => {
@@ -135,7 +176,6 @@ export default function HomeScreen({ navigation }) {
 
     return (
       <View style={{ flexDirection: 'row', paddingHorizontal: 10, marginBottom: 10, alignItems: 'flex-end' }}>
-        {/* Avatar à gauche, comme dans un groupe Telegram */}
         <View style={{ marginRight: 8, marginBottom: 2 }}>
           <Avatar
             name={item.display_name}
@@ -144,7 +184,6 @@ export default function HomeScreen({ navigation }) {
           />
         </View>
 
-        {/* Bulle du message */}
         <View style={{
           flex: 1,
           backgroundColor: colors.surface,
@@ -186,7 +225,6 @@ export default function HomeScreen({ navigation }) {
             )}
           </TouchableOpacity>
 
-          {/* Réactions en pastilles */}
           {!isMyStory && (
             <View style={{ flexDirection: 'row', flexWrap: 'wrap', paddingHorizontal: 10, paddingTop: 8 }}>
               {REACTIONS.map(emoji => (
@@ -205,7 +243,6 @@ export default function HomeScreen({ navigation }) {
             </View>
           )}
 
-          {/* Zone de réponse */}
           {!isMyStory ? (
             <View style={{ flexDirection: 'row', alignItems: 'flex-end', paddingHorizontal: 8, paddingBottom: 8, paddingTop: 2 }}>
               <TextInput
@@ -242,7 +279,6 @@ export default function HomeScreen({ navigation }) {
 
   return (
     <View style={{ flex: 1, backgroundColor: colors.bg }}>
-      {/* En-tête plat façon Telegram */}
       <View style={{
         paddingTop: Math.max(insets.top, 12),
         paddingBottom: 10,
@@ -277,7 +313,7 @@ export default function HomeScreen({ navigation }) {
       <FlatList
         data={stories}
         keyExtractor={(item) => String(item.id)}
-        contentContainerStyle={{ paddingTop: 10, paddingBottom: 24 }}
+        contentContainerStyle={{ paddingTop: 10, paddingBottom: 100 }}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.primary} />}
         onViewableItemsChanged={onViewableItemsChanged}
         viewabilityConfig={viewabilityConfig}
@@ -292,6 +328,27 @@ export default function HomeScreen({ navigation }) {
         }
         renderItem={renderItem}
       />
+
+      {/* --- BOUTON FLOTTANT POUR AJOUTER UNE STORY --- */}
+      <TouchableOpacity
+        onPress={addStory}
+        disabled={uploadingStory}
+        style={{
+          position: 'absolute',
+          right: 20,
+          bottom: Math.max(insets.bottom, 20) + 10,
+          width: 60,
+          height: 60,
+          borderRadius: 30,
+          backgroundColor: colors.primary,
+          alignItems: 'center',
+          justifyContent: 'center',
+          shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.3, shadowRadius: 5, elevation: 8,
+        }}
+      >
+        <Ionicons name={uploadingStory ? "hourglass" : "add"} size={32} color="#fff" />
+      </TouchableOpacity>
+
     </View>
   );
 }
