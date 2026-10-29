@@ -7,6 +7,7 @@ import * as ImagePicker from 'expo-image-picker';
 import * as DocumentPicker from 'expo-document-picker';
 import * as FileSystem from 'expo-file-system/legacy';
 import * as Sharing from 'expo-sharing';
+import { VideoView, useVideoPlayer } from 'expo-video';
 import { api, errMsg, fcfa } from '../api';
 import { SERVER_URL } from '../config';
 import { useAuth } from '../auth';
@@ -76,10 +77,23 @@ const sameGroup = (a, b) => !!a && !!b && a.sender_id === b.sender_id && sameDay
 
 const QUICK_REACTIONS = ['👍', '❤️', '😂', '😮', '😢', '🙏'];
 
-/* ------------------------------------------------------------------ */
-
 const fullDate = (d) =>
   new Date(d).toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' }) + ' à ' + hhmm(d);
+
+/* ------------------------------------------------------------------ */
+/*  Composant vidéo                                                    */
+/* ------------------------------------------------------------------ */
+function ChatVideo({ uri }) {
+  const player = useVideoPlayer(uri, (p) => { p.loop = false; });
+  return (
+    <VideoView
+      player={player}
+      style={{ width: 240, height: 240, borderRadius: 14 }}
+      contentFit="cover"
+      nativeControls={true}
+    />
+  );
+}
 
 /* ------------------------------------------------------------------ */
 /*  Visionneuse photo plein écran                                      */
@@ -121,28 +135,14 @@ function ImageViewer({ image, onClose }) {
   return (
     <Modal visible animationType="fade" onRequestClose={onClose} statusBarTranslucent>
       <View style={{ flex: 1, backgroundColor: '#000' }}>
-        <ScrollView
-          horizontal
-          nestedScrollEnabled
-          scrollEnabled={zoomed}
-          bounces={false}
-          showsHorizontalScrollIndicator={false}
-          contentOffset={zoomed ? { x: (W - width) / 2, y: 0 } : undefined}
-        >
-          <ScrollView
-            nestedScrollEnabled
-            scrollEnabled={zoomed}
-            bounces={false}
-            showsVerticalScrollIndicator={false}
-            contentOffset={zoomed ? { x: 0, y: (H - height) / 2 } : undefined}
-          >
+        <ScrollView horizontal nestedScrollEnabled scrollEnabled={zoomed} bounces={false} showsHorizontalScrollIndicator={false} contentOffset={zoomed ? { x: (W - width) / 2, y: 0 } : undefined}>
+          <ScrollView nestedScrollEnabled scrollEnabled={zoomed} bounces={false} showsVerticalScrollIndicator={false} contentOffset={zoomed ? { x: 0, y: (H - height) / 2 } : undefined}>
             <TouchableWithoutFeedback onPress={onTap}>
               <Image source={{ uri: image.uri }} style={{ width: W, height: H }} resizeMode="contain" />
             </TouchableWithoutFeedback>
           </ScrollView>
         </ScrollView>
 
-        {/* Barre du haut */}
         <View style={{ position: 'absolute', top: 0, left: 0, right: 0, paddingTop: insets.top + 6, paddingHorizontal: 12, paddingBottom: 10, flexDirection: 'row', alignItems: 'center', backgroundColor: 'rgba(0,0,0,0.45)' }}>
           <TouchableOpacity onPress={onClose} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }} style={{ padding: 6 }}>
             <Ionicons name="close" size={28} color="#fff" />
@@ -155,12 +155,6 @@ function ImageViewer({ image, onClose }) {
             {busy ? <ActivityIndicator color="#fff" /> : <Ionicons name="download-outline" size={26} color="#fff" />}
           </TouchableOpacity>
         </View>
-
-        {!zoomed ? (
-          <View style={{ position: 'absolute', bottom: insets.bottom + 16, left: 0, right: 0, alignItems: 'center' }}>
-            <Text style={{ color: 'rgba(255,255,255,0.6)', fontSize: 12 }}>Appuyez deux fois pour zoomer</Text>
-          </View>
-        ) : null}
       </View>
     </Modal>
   );
@@ -182,12 +176,7 @@ function Meta({ m, mine, read, t, onImage }) {
     <View style={{ flexDirection: 'row', alignItems: 'center' }}>
       <Text style={{ color, fontSize: 11 }}>{hhmm(m.created_at)}</Text>
       {mine ? (
-        <Ionicons
-          name={read ? 'checkmark-done' : 'checkmark'}
-          size={15}
-          color={onImage ? '#fff' : t.check}
-          style={{ marginLeft: 2 }}
-        />
+        <Ionicons name={read ? 'checkmark-done' : 'checkmark'} size={15} color={onImage ? '#fff' : t.check} style={{ marginLeft: 2 }} />
       ) : null}
     </View>
   );
@@ -200,8 +189,11 @@ function Bubble({ m, mine, isGroup, read, first, last, onPay, onDecline, onOpenI
   const isReq = m.type === 'money_request';
   const isImage = m.type === 'image';
   const isFile = m.type === 'file';
+  const isVideo = m.type === 'video';
 
-  // Appui long : on mesure la bulle à l'écran puis on ouvre le menu
+  const mediaUri = m.file_url?.startsWith('http') ? m.file_url : (m.file_url ? SERVER_URL + m.file_url : null);
+  const avatarUri = m.sender_avatar ? (m.sender_avatar.startsWith('http') ? m.sender_avatar : SERVER_URL + m.sender_avatar) : null;
+
   const triggerMenu = () => {
     if (!onLongPress || !bubbleRef.current) return;
     bubbleRef.current.measureInWindow((x, y, w, h) => {
@@ -213,7 +205,6 @@ function Bubble({ m, mine, isGroup, read, first, last, onPay, onDecline, onOpenI
   const fg = t.text;
   const sub = mine ? t.metaOut : t.meta;
 
-  // Forme de la bulle : coin "queue" sur le dernier message d'un groupe
   const R = 17, small = 5, tail = 4;
   const sideTop = first ? R : small;
   const sideBottom = last ? tail : small;
@@ -224,7 +215,7 @@ function Bubble({ m, mine, isGroup, read, first, last, onPay, onDecline, onOpenI
   const downloadFile = async () => {
     try {
       const fileUri = FileSystem.documentDirectory + m.file_name;
-      const { uri } = await FileSystem.downloadAsync(SERVER_URL + m.file_url, fileUri);
+      const { uri } = await FileSystem.downloadAsync(mediaUri, fileUri);
       if (await Sharing.isAvailableAsync()) {
         await Sharing.shareAsync(uri);
       } else {
@@ -253,18 +244,7 @@ function Bubble({ m, mine, isGroup, read, first, last, onPay, onDecline, onOpenI
     );
 
     return (
-      <View
-        style={{
-          alignSelf: 'center',
-          width: '80%',
-          maxWidth: 310,
-          marginVertical: 6,
-          backgroundColor: t.incoming,
-          borderRadius: 18,
-          shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.14, shadowRadius: 3, elevation: 2,
-        }}
-      >
-        {/* En-tête : icône, titre, montant, phrase */}
+      <View style={{ alignSelf: 'center', width: '80%', maxWidth: 310, marginVertical: 6, backgroundColor: t.incoming, borderRadius: 18, shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.14, shadowRadius: 3, elevation: 2 }}>
         <View style={{ alignItems: 'center', paddingTop: 10, paddingHorizontal: 16, paddingBottom: 8 }}>
           <View style={{ width: 30, height: 30, borderRadius: 15, backgroundColor: col, alignItems: 'center', justifyContent: 'center' }}>
             <Ionicons name={mine ? 'arrow-up' : 'arrow-down'} size={16} color="#fff" />
@@ -278,7 +258,6 @@ function Bubble({ m, mine, isGroup, read, first, last, onPay, onDecline, onOpenI
           </Text>
         </View>
 
-        {/* Ligne pointillée avec encoches sur les côtés */}
         <View style={{ height: 14, justifyContent: 'center' }}>
           <View style={{ position: 'absolute', left: -7, top: 0, width: 14, height: 14, borderRadius: 7, backgroundColor: t.chatBg }} />
           <View style={{ position: 'absolute', right: -7, top: 0, width: 14, height: 14, borderRadius: 7, backgroundColor: t.chatBg }} />
@@ -287,7 +266,6 @@ function Bubble({ m, mine, isGroup, read, first, last, onPay, onDecline, onOpenI
           </View>
         </View>
 
-        {/* Détails */}
         <View style={{ paddingHorizontal: 18, paddingTop: 0, paddingBottom: 8 }}>
           <Row label={mine ? 'Destinataire' : 'Expéditeur'} value={who} />
           {m.body ? <Row label="Motif" value={m.body} /> : null}
@@ -314,18 +292,7 @@ function Bubble({ m, mine, isGroup, read, first, last, onPay, onDecline, onOpenI
         : <><Text style={{ fontWeight: '700' }}>{who}</Text> vous demande {amountText}</>);
 
     return (
-      <View
-        style={{
-          alignSelf: 'center',
-          width: '80%',
-          maxWidth: 320,
-          marginVertical: 6,
-          backgroundColor: t.incoming,
-          borderRadius: 20,
-          overflow: 'hidden',
-          shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.15, shadowRadius: 3, elevation: 2,
-        }}
-      >
+      <View style={{ alignSelf: 'center', width: '80%', maxWidth: 320, marginVertical: 6, backgroundColor: t.incoming, borderRadius: 20, overflow: 'hidden', shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.15, shadowRadius: 3, elevation: 2 }}>
         <View style={{ height: 5, backgroundColor: accent }} />
         <View style={{ alignItems: 'center', paddingHorizontal: 16, paddingTop: 14, paddingBottom: 10 }}>
           <View style={{ width: 46, height: 46, borderRadius: 23, backgroundColor: accent, alignItems: 'center', justifyContent: 'center' }}>
@@ -383,7 +350,7 @@ function Bubble({ m, mine, isGroup, read, first, last, onPay, onDecline, onOpenI
       {showAvatar ? (
         last ? (
           <Image
-            source={{ uri: m.sender_avatar ? SERVER_URL + m.sender_avatar : 'https://ui-avatars.com/api/?background=random&color=fff&name=' + encodeURIComponent(m.sender_name || '?') }}
+            source={{ uri: avatarUri || 'https://ui-avatars.com/api/?background=random&color=fff&name=' + encodeURIComponent(m.sender_name || '?') }}
             style={{ width: 34, height: 34, borderRadius: 17, marginRight: 6, alignSelf: 'flex-end' }}
           />
         ) : (
@@ -393,32 +360,17 @@ function Bubble({ m, mine, isGroup, read, first, last, onPay, onDecline, onOpenI
 
       <View style={{ alignItems: mine ? 'flex-end' : 'flex-start', flexShrink: 1 }}>
         <Pressable ref={bubbleRef} collapsable={false} onLongPress={triggerMenu} delayLongPress={280}>
-          <View
-            style={{
-              backgroundColor: bg,
-              ...radius,
-              paddingHorizontal: isImage ? 3 : 10,
-              paddingTop: isImage ? 3 : 6,
-              paddingBottom: isImage ? 3 : 6,
-              overflow: 'hidden',
-              shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.12, shadowRadius: 1, elevation: 1,
-            }}
-          >
+          <View style={{ backgroundColor: bg, ...radius, paddingHorizontal: (isImage || isVideo) ? 3 : 10, paddingTop: (isImage || isVideo) ? 3 : 6, paddingBottom: (isImage || isVideo) ? 3 : 6, overflow: 'hidden', shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.12, shadowRadius: 1, elevation: 1 }}>
             {showName ? (
-              <Text style={{ color: nameColor(m.sender_name), fontWeight: '700', fontSize: 14, marginBottom: 2, marginHorizontal: isImage ? 7 : 0, marginTop: isImage ? 3 : 0 }}>
+              <Text style={{ color: nameColor(m.sender_name), fontWeight: '700', fontSize: 14, marginBottom: 2, marginHorizontal: (isImage || isVideo) ? 7 : 0, marginTop: (isImage || isVideo) ? 3 : 0 }}>
                 {m.sender_name}
               </Text>
             ) : null}
 
             {isImage ? (
               <View>
-                <TouchableOpacity
-                  activeOpacity={0.9}
-                  onLongPress={triggerMenu}
-                  delayLongPress={280}
-                  onPress={() => onOpenImage && onOpenImage({ uri: SERVER_URL + m.file_url, sender: mine ? 'Vous' : m.sender_name, date: m.created_at })}
-                >
-                  <Image source={{ uri: SERVER_URL + m.file_url }} style={{ width: 240, height: 240, borderRadius: 14 }} resizeMode="cover" />
+                <TouchableOpacity activeOpacity={0.9} onLongPress={triggerMenu} delayLongPress={280} onPress={() => onOpenImage && onOpenImage({ uri: mediaUri, sender: mine ? 'Vous' : m.sender_name, date: m.created_at })}>
+                  <Image source={{ uri: mediaUri }} style={{ width: 240, height: 240, borderRadius: 14 }} resizeMode="cover" />
                 </TouchableOpacity>
                 {imageNoCaption ? (
                   <View style={{ position: 'absolute', right: 8, bottom: 8, backgroundColor: 'rgba(0,0,0,0.45)', borderRadius: 10, paddingHorizontal: 7, paddingVertical: 2 }}>
@@ -432,6 +384,14 @@ function Bubble({ m, mine, isGroup, read, first, last, onPay, onDecline, onOpenI
                     </View>
                   </>
                 )}
+              </View>
+            ) : isVideo ? (
+              <View>
+                <ChatVideo uri={mediaUri} />
+                {m.body ? <Text style={{ color: fg, fontSize: 16, marginTop: 6, marginHorizontal: 7 }}>{m.body}</Text> : null}
+                <View style={{ alignSelf: 'flex-end', marginRight: 7, marginTop: 2, marginBottom: 2 }}>
+                  <Meta m={m} mine={mine} read={read} t={t} />
+                </View>
               </View>
             ) : isFile ? (
               <View style={{ minWidth: 230 }}>
@@ -449,8 +409,6 @@ function Bubble({ m, mine, isGroup, read, first, last, onPay, onDecline, onOpenI
                 </View>
               </View>
             ) : (
-              // Texte + heure : l'heure reste à droite sur la même ligne si ça rentre,
-              // sinon elle passe automatiquement sous le texte (jamais de chevauchement)
               <View style={{ flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'flex-end', alignItems: 'flex-end' }}>
                 <Text style={{ color: fg, fontSize: 16, lineHeight: 22, flexShrink: 1 }}>{m.body}</Text>
                 <View style={{ marginLeft: 10, marginTop: 2, alignSelf: 'flex-end' }}>
@@ -473,7 +431,6 @@ function Bubble({ m, mine, isGroup, read, first, last, onPay, onDecline, onOpenI
 
 /* ------------------------------------------------------------------ */
 /*  Menu d'appui long façon iOS / WhatsApp                             */
-/*  Fond flouté + message mis en avant + réactions + actions           */
 /* ------------------------------------------------------------------ */
 function MessageMenu({ data, onClose, onReact, currentReaction, actions, bubbleProps, dark, t }) {
   const { height } = useWindowDimensions();
@@ -496,7 +453,6 @@ function MessageMenu({ data, onClose, onReact, currentReaction, actions, bubbleP
   const topMin = insets.top + BAR_H + 16;
   const bottomMax = height - insets.bottom - 12;
 
-  // Position verticale du message mis en avant (décalé si trop près des bords)
   let top = y;
   if (top + h + 8 + menuH > bottomMax) top = bottomMax - menuH - 8 - h;
   if (top < topMin) top = topMin;
@@ -510,7 +466,6 @@ function MessageMenu({ data, onClose, onReact, currentReaction, actions, bubbleP
       <View pointerEvents="none" style={[StyleSheet.absoluteFill, { backgroundColor: dark ? 'rgba(0,0,0,0.75)' : 'rgba(0,0,0,0.6)' }]} />
       <Pressable style={StyleSheet.absoluteFill} onPress={onClose} />
 
-      {/* Barre de réactions */}
       <Animated.View
         style={[
           {
@@ -536,7 +491,6 @@ function MessageMenu({ data, onClose, onReact, currentReaction, actions, bubbleP
         ))}
       </Animated.View>
 
-      {/* Message mis en avant (copie posée exactement au même endroit) */}
       <Animated.View
         pointerEvents="none"
         style={{ position: 'absolute', left: 0, right: 0, top: top - 1, transform: [{ scale: bubbleScale }] }}
@@ -555,7 +509,6 @@ function MessageMenu({ data, onClose, onReact, currentReaction, actions, bubbleP
         />
       </Animated.View>
 
-      {/* Actions */}
       <Animated.View
         style={[
           {
@@ -615,7 +568,6 @@ export default function ChatScreen({ route, navigation }) {
   const [groupAvatar, setGroupAvatar] = useState(null);
   const isGroup = type === 'group';
 
-  // Suivi du clavier : on retire la marge "barre de navigation" quand il est ouvert
   useEffect(() => {
     const show = Keyboard.addListener(Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow', () => {
       setKbOpen(true);
@@ -681,7 +633,7 @@ export default function ChatScreen({ route, navigation }) {
         >
           {isGroup ? (
             groupAvatar ? (
-              <Image source={{ uri: SERVER_URL + groupAvatar }} style={{ width: 40, height: 40, borderRadius: 20, marginRight: 10 }} />
+              <Image source={{ uri: groupAvatar.startsWith('http') ? groupAvatar : SERVER_URL + groupAvatar }} style={{ width: 40, height: 40, borderRadius: 20, marginRight: 10 }} />
             ) : (
               <View style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: colors.primary, alignItems: 'center', justifyContent: 'center', marginRight: 10 }}>
                 <Ionicons name="people" size={22} color="#fff" />
@@ -689,7 +641,7 @@ export default function ChatScreen({ route, navigation }) {
             )
           ) : (
             <Image
-              source={{ uri: peerAvatar ? SERVER_URL + peerAvatar : 'https://ui-avatars.com/api/?background=random&color=fff&name=' + encodeURIComponent(title || '?') }}
+              source={{ uri: peerAvatar ? (peerAvatar.startsWith('http') ? peerAvatar : SERVER_URL + peerAvatar) : 'https://ui-avatars.com/api/?background=random&color=fff&name=' + encodeURIComponent(title || '?') }}
               style={{ width: 40, height: 40, borderRadius: 20, marginRight: 10 }}
             />
           )}
@@ -761,6 +713,8 @@ export default function ChatScreen({ route, navigation }) {
       let result;
       if (type === 'image') {
         result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'], quality: 0.7 });
+      } else if (type === 'video') {
+        result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['videos'], quality: 0.7 });
       } else {
         result = await DocumentPicker.getDocumentAsync({ type: '*/*' });
       }
@@ -768,19 +722,37 @@ export default function ChatScreen({ route, navigation }) {
       if (!result.canceled) {
         setUploading(true);
         const file = result.assets[0];
+        
+        const uri = file.uri;
+        const extension = uri.split('.').pop().toLowerCase();
+        let mimeType = 'image/jpeg';
+        let fileName = `file_${Date.now()}.jpg`;
+        
+        if (type === 'video' || extension === 'mp4' || extension === 'mov') {
+          mimeType = 'video/mp4';
+          fileName = `video_${Date.now()}.mp4`;
+        } else if (extension === 'png') {
+          mimeType = 'image/png';
+          fileName = `image_${Date.now()}.png`;
+        }
+
         const formData = new FormData();
         formData.append('fichier', {
-          uri: Platform.OS === 'ios' ? file.uri.replace('file://', '') : file.uri,
-          name: file.name || 'fichier',
-          type: file.mimeType || (type === 'image' ? 'image/jpeg' : 'application/octet-stream'),
+          uri: Platform.OS === 'ios' ? uri.replace('file://', '') : uri,
+          name: fileName,
+          type: mimeType,
         });
 
         const uploadRes = await api.post('/upload', formData, {
           headers: { 'Content-Type': 'multipart/form-data' },
         });
 
+        let msgType = 'file';
+        if (type === 'image') msgType = 'image';
+        else if (type === 'video') msgType = 'video';
+
         const { data } = await api.post(`/conversations/${id}/messages`, {
-          type: type === 'image' ? 'image' : 'file',
+          type: msgType,
           file_url: uploadRes.data.url,
           file_name: file.name || uploadRes.data.name,
         });
@@ -804,7 +776,6 @@ export default function ChatScreen({ route, navigation }) {
     { text: 'Non', style: 'cancel' },
     { text: 'Refuser', style: 'destructive', onPress: () => api.post(`/wallet/requests/${m.meta.request_id}/decline`).catch((e) => Alert.alert('Erreur', errMsg(e))) }]);
 
-  /* ---------------- Menu d'appui long : actions ---------------- */
   const toggleReaction = (m, emoji) => {
     setReactions((p) => {
       const next = { ...p };
@@ -860,7 +831,6 @@ export default function ChatScreen({ route, navigation }) {
   const hasText = !!text.trim();
 
   const renderItem = ({ item, index }) => {
-    // La liste est inversée : index+1 = message plus ancien, index-1 = plus récent
     const older = msgs[index + 1];
     const newer = msgs[index - 1];
     const first = !sameGroup(older, item);
@@ -908,11 +878,18 @@ export default function ChatScreen({ route, navigation }) {
 
       {showAttach && (
         <View style={{ flexDirection: 'row', paddingVertical: 18, paddingHorizontal: 24, backgroundColor: t.bar, borderTopWidth: 1, borderTopColor: t.divider }}>
-          <TouchableOpacity onPress={() => handleUpload('image')} style={{ alignItems: 'center', marginRight: 32 }}>
+          <TouchableOpacity onPress={() => handleUpload('image')} style={{ alignItems: 'center', marginRight: 24 }}>
             <View style={{ width: 54, height: 54, borderRadius: 27, backgroundColor: '#A05BD9', alignItems: 'center', justifyContent: 'center', marginBottom: 6 }}>
               <Ionicons name="image" size={26} color="#fff" />
             </View>
             <Text style={{ color: colors.text, fontSize: 13 }}>Photo</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity onPress={() => handleUpload('video')} style={{ alignItems: 'center', marginRight: 24 }}>
+            <View style={{ width: 54, height: 54, borderRadius: 27, backgroundColor: '#E53935', alignItems: 'center', justifyContent: 'center', marginBottom: 6 }}>
+              <Ionicons name="videocam" size={26} color="#fff" />
+            </View>
+            <Text style={{ color: colors.text, fontSize: 13 }}>Vidéo</Text>
           </TouchableOpacity>
 
           <TouchableOpacity onPress={() => handleUpload('file')} style={{ alignItems: 'center' }}>
@@ -924,7 +901,6 @@ export default function ChatScreen({ route, navigation }) {
         </View>
       )}
 
-      {/* Barre de saisie façon Telegram */}
       <View
         style={{
           flexDirection: 'row',

@@ -171,3 +171,7 @@ CREATE TABLE IF NOT EXISTS story_reactions (
   created_at timestamptz NOT NULL DEFAULT now(),
   PRIMARY KEY (story_id, user_id)
 );
+
+ALTER TABLE messages DROP CONSTRAINT IF EXISTS messages_type_check;
+ALTER TABLE messages ADD CONSTRAINT messages_type_check 
+  CHECK (type IN ('text', 'money', 'money_request', 'image', 'file', 'sticker', 'video'));

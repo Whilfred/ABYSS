@@ -186,11 +186,15 @@ export default function HomeScreen({ navigation }) {
     const isMyStory = item.user_id === user?.id;
     const canSend = !!messageText.trim() && !sendingMsg;
     
-    // --- CORRECTION : GESTION DES URLS ---
+    // --- CORRECTION DES URLS (Images ET Avatars) ---
     const mediaUri = item.media_url.startsWith('http') 
       ? item.media_url 
       : SERVER_URL + item.media_url;
-    // ------------------------------------
+
+    const avatarUri = item.avatar_url 
+      ? (item.avatar_url.startsWith('http') ? item.avatar_url : SERVER_URL + item.avatar_url)
+      : null;
+    // -----------------------------------------------
 
     return (
       <View style={{ flexDirection: 'row', paddingHorizontal: 10, marginBottom: 10, alignItems: 'flex-end' }}>
@@ -198,7 +202,7 @@ export default function HomeScreen({ navigation }) {
           <Avatar
             name={item.display_name}
             size={38}
-            uri={item.avatar_url ? SERVER_URL + item.avatar_url : null}
+            uri={avatarUri} // <-- Utilisation de l'URL corrigée
           />
         </View>
 
@@ -224,13 +228,13 @@ export default function HomeScreen({ navigation }) {
           >
             {isVideo ? (
               <FeedVideo
-                uri={mediaUri} // <-- Utilisation de l'URL corrigée
+                uri={mediaUri}
                 isVisible={index === visibleIndex}
                 isScreenFocused={isFocused}
               />
             ) : (
               <Image
-                source={{ uri: mediaUri }} // <-- Utilisation de l'URL corrigée
+                source={{ uri: mediaUri }}
                 style={{ width: '100%', height: 340 }}
                 resizeMode="cover"
               />
