@@ -20,7 +20,6 @@ const REACTIONS = ['❤️', '😂', '😮', '😢', '🔥'];
 
 const fullUrl = (u) => (u ? (u.startsWith('http') ? u : SERVER_URL + u) : null);
 
-// --- ANIMATION DES RÉACTIONS ---
 function FloatingReaction({ emoji, startX, startY, onComplete }) {
   const translateY = useRef(new Animated.Value(0)).current;
   const translateX = useRef(new Animated.Value(0)).current;
@@ -57,7 +56,6 @@ function FloatingReaction({ emoji, startX, startY, onComplete }) {
   );
 }
 
-// --- MEDIA PLEIN ÉCRAN (Vidéo & Image) ---
 function FullMedia({ uri, isVideo, isVisible, isScreenFocused }) {
   if (isVideo) {
     const player = useVideoPlayer(uri, (p) => { p.loop = true; });
@@ -66,7 +64,6 @@ function FullMedia({ uri, isVideo, isVisible, isScreenFocused }) {
       else player.pause();
     }, [isVisible, isScreenFocused, player]);
 
-    // Qualité vidéo intacte. Cover pour occuper l'espace.
     return (
       <VideoView
         player={player}
@@ -76,8 +73,6 @@ function FullMedia({ uri, isVideo, isVisible, isScreenFocused }) {
       />
     );
   }
-
-  // Image affichée en entier (contain) sur fond noir, taille augmentée
   return (
     <Image
       source={{ uri }}
@@ -87,7 +82,6 @@ function FullMedia({ uri, isVideo, isVisible, isScreenFocused }) {
   );
 }
 
-// --- BULLE DE STORY ---
 function StoryBubble({ label, uri, name, colors, ring = true, plus = false, onPress, onPlusPress }) {
   return (
     <TouchableOpacity onPress={onPress} activeOpacity={0.8} style={{ alignItems: 'center', marginRight: 14, width: 76 }}>
@@ -155,9 +149,9 @@ export default function HomeScreen({ navigation }) {
     try {
       const result = await ImagePicker.launchImageLibraryAsync({
         mediaTypes: ['images', 'videos'],
-        quality: 1, // Meilleure qualité pour les images
-        videoQuality: ImagePicker.UIImagePickerControllerQualityType.High, // Meilleure qualité pour les vidéos
-        allowsEditing: false, // Pas de rognage
+        quality: 1,
+        videoQuality: ImagePicker.UIImagePickerControllerQualityType.High,
+        allowsEditing: false,
       });
 
       if (!result.canceled) {
@@ -332,7 +326,6 @@ export default function HomeScreen({ navigation }) {
     );
   };
 
-  // Groupes de stories par utilisateur (rangée du haut)
   const groupedStories = stories.reduce((acc, story) => {
     if (!acc[story.user_id]) acc[story.user_id] = [];
     acc[story.user_id].push(story);
