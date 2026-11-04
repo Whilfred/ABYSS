@@ -143,7 +143,7 @@ export default function ProfileScreen({ navigation }) {
   };
 
   const confirmLogout = () =>
-    Alert.alert('Se déconnecter', 'Voulez-vous vraiment quitter ABYSS sur cet appareil ?', [
+    Alert.alert('Se déconnecter', 'Voulez-vous vraiment quitter Movo sur cet appareil ?', [
       { text: 'Annuler', style: 'cancel' },
       { text: 'Se déconnecter', style: 'destructive', onPress: logout },
     ]);
@@ -260,7 +260,7 @@ export default function ProfileScreen({ navigation }) {
           <Row icon="log-out-outline" label="Se déconnecter" onPress={confirmLogout} danger last P={P} />
         </Section>
 
-        <Text style={{ textAlign: 'center', color: P.muted, fontSize: 12, marginTop: 28 }}>ABYSS · Version 1.0.0</Text>
+        <Text style={{ textAlign: 'center', color: P.muted, fontSize: 12, marginTop: 28 }}>Movo · Version 1.0.0</Text>
       </ScrollView>
     </KeyboardAvoidingView>
   );

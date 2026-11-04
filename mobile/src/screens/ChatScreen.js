@@ -54,7 +54,6 @@ function ChatVideo({ uri }) {
 function ChatAudio({ uri, mine, t }) {
   const player = useAudioPlayer(uri);
   const status = useAudioPlayerStatus(player);
-  const fg = t.text;
   const sub = mine ? t.metaOut : t.meta;
 
   const formatTime = (millis) => {
@@ -401,6 +400,7 @@ export default function ChatScreen({ route, navigation }) {
   const [lastSeen, setLastSeen] = useState(null);
   const [peerAvatar, setPeerAvatar] = useState(null);
   const [groupAvatar, setGroupAvatar] = useState(null);
+  const [editingMsg, setEditingMsg] = useState(null);
   const isGroup = type === 'group';
 
   const [isRecording, setIsRecording] = useState(false);
@@ -411,7 +411,7 @@ export default function ChatScreen({ route, navigation }) {
   useEffect(() => {
     (async () => {
       const status = await AudioModule.requestRecordingPermissionsAsync();
-      if (!status.granted) Alert.alert('Permission requise', "L'accès au microphone est nécessaire pour envoyer des messages vocaux.");
+      if (!status.granted) Alert.alert('Permission requise', "L'accès au microphone est nécessaire.");
     })();
   }, []);
 
@@ -460,12 +460,38 @@ export default function ChatScreen({ route, navigation }) {
     if (!socket) return;
     const onNew = (m) => { if (m.conversation_id !== id) return; setMsgs((p) => (p.some((x) => x.id === m.id) ? p : [m, ...p])); saveMessagesToLocal([m]); if (m.sender_id !== user.id) api.post(`/conversations/${id}/read`).catch(() => {}); };
     const onUpd = (m) => { if (m.conversation_id === id) setMsgs((p) => p.map((x) => (x.id === m.id ? m : x))); };
+    const onDel = (d) => { setMsgs((p) => p.filter((x) => x.id !== d.id)); };
+    const onReact = (r) => {
+      setMsgs((p) => p.map((x) => {
+        if (x.id !== r.message_id) return x;
+        const reacts = (x.reactions || []).filter((rr) => rr.user_id !== r.user_id);
+        if (r.emoji) reacts.push({ user_id: r.user_id, emoji: r.emoji });
+        return { ...x, reactions: reacts };
+      }));
+    };
     const onRead = (e) => { if (e.conversation_id === id) setReads((p) => ({ ...p, [e.user_id]: e.at })); };
-    socket.on('message:new', onNew); socket.on('message:update', onUpd); socket.on('conversation:read', onRead);
-    return () => { socket.off('message:new', onNew); socket.off('message:update', onUpd); socket.off('conversation:read', onRead); };
+    socket.on('message:new', onNew); socket.on('message:update', onUpd); socket.on('message:delete', onDel); socket.on('message:reaction', onReact); socket.on('conversation:read', onRead);
+    return () => { socket.off('message:new', onNew); socket.off('message:update', onUpd); socket.off('message:delete', onDel); socket.off('message:reaction', onReact); socket.off('conversation:read', onRead); };
   }, [socket, id, user.id]);
 
-  const send = async () => { const body = text.trim(); if (!body) return; setText(''); try { const { data } = await api.post(`/conversations/${id}/messages`, { body, type: 'text' }); saveMessagesToLocal([data]); } catch (e) { setText(body); Alert.alert('Erreur', "Impossible d'envoyer le message."); } };
+  const send = async () => { 
+    const body = text.trim(); 
+    if (!body) return; 
+    
+    if (editingMsg) {
+      // Mode Édition
+      try {
+        await api.put(`/conversations/${id}/messages/${editingMsg.id}`, { body });
+        setEditingMsg(null);
+        setText('');
+      } catch (e) { Alert.alert('Erreur', "Impossible de modifier le message."); }
+      return;
+    }
+
+    // Mode Envoi
+    setText(''); 
+    try { const { data } = await api.post(`/conversations/${id}/messages`, { body, type: 'text' }); saveMessagesToLocal([data]); } catch (e) { setText(body); Alert.alert('Erreur', "Impossible d'envoyer le message."); } 
+  };
 
   const handleUpload = async (type) => {
     setShowAttach(false);
@@ -479,35 +505,43 @@ export default function ChatScreen({ route, navigation }) {
         const file = result.assets[0];
         const uri = file.uri;
         const extension = uri.split('.').pop().toLowerCase();
-        let mimeType = 'image/jpeg'; let fileName = `file_${Date.now()}.jpg`;
-        if (type === 'video' || extension === 'mp4' || extension === 'mov') { mimeType = 'video/mp4'; fileName = `video_${Date.now()}.mp4`; } else if (extension === 'png') { mimeType = 'image/png'; fileName = `image_${Date.now()}.png`; }
-        const formData = new FormData(); formData.append('fichier', { uri: Platform.OS === 'ios' ? uri.replace('file://', '') : uri, name: fileName, type: mimeType });
+        
+        let mimeType = file.mimeType || 'application/octet-stream'; 
+        let fileName = file.name || `file_${Date.now()}`;
+        
+        if (type === 'image') {
+          mimeType = file.mimeType || 'image/jpeg';
+          fileName = file.name || `image_${Date.now()}.jpg`;
+        } else if (type === 'video') {
+          mimeType = file.mimeType || (extension === 'mov' ? 'video/quicktime' : 'video/mp4');
+          fileName = file.name || `video_${Date.now()}.mp4`;
+        }
+
+        const formData = new FormData(); 
+        formData.append('fichier', { uri: Platform.OS === 'ios' ? uri.replace('file://', '') : uri, name: fileName, type: mimeType });
+        
         const uploadRes = await api.post('/upload', formData, { headers: { 'Content-Type': 'multipart/form-data' } });
+        
         let msgType = 'file'; if (type === 'image') msgType = 'image'; else if (type === 'video') msgType = 'video';
-        const { data } = await api.post(`/conversations/${id}/messages`, { type: msgType, file_url: uploadRes.data.url, file_name: file.name || uploadRes.data.name });
+        
+        const { data } = await api.post(`/conversations/${id}/messages`, { type: msgType, file_url: uploadRes.data.url, file_name: fileName });
         saveMessagesToLocal([data]);
       }
-    } catch (e) { Alert.alert('Erreur', "Impossible d'envoyer le fichier."); } finally { setUploading(false); }
+    } catch (e) { Alert.alert('Erreur', "Impossible d'envoyer le fichier. Vérifiez votre connexion."); } finally { setUploading(false); }
   };
 
   // --- AUDIO ---
   const startRecording = async () => {
     try {
-      // Si un enregistrement est déjà en cours, on l'arrête proprement
-      if (audioRecorder.isRecording) {
-        await audioRecorder.stop();
-      }
-      
+      if (audioRecorder.isRecording) await audioRecorder.stop();
       await audioRecorder.prepareToRecordAsync();
       audioRecorder.record();
       setIsRecording(true);
       setRecordingDuration(0);
       recordingTimer.current = setInterval(() => setRecordingDuration((prev) => prev + 1), 1000);
     } catch (err) {
-      console.error(err);
-      // En cas d'erreur (déjà préparé), on tente de réinitialiser
       try { await audioRecorder.stop(); } catch (e) {}
-      Alert.alert('Erreur', "Impossible de démarrer l'enregistrement. Veuillez réessayer.");
+      Alert.alert('Erreur', "Impossible de démarrer l'enregistrement.");
     }
   };
 
@@ -515,45 +549,64 @@ export default function ChatScreen({ route, navigation }) {
     if (!isRecording) return;
     setIsRecording(false);
     if (recordingTimer.current) clearInterval(recordingTimer.current);
-    
     try {
       await audioRecorder.stop();
       if (!cancel) {
         const uri = audioRecorder.uri;
         if (uri) await uploadAudio(uri);
       }
-    } catch (error) {
-      console.log('Erreur arrêt enregistrement:', error);
-    }
+    } catch (error) {}
   };
 
   const uploadAudio = async (uri) => {
     setUploading(true);
     try {
       const formData = new FormData();
-      formData.append('fichier', {
-        uri: Platform.OS === 'ios' ? uri.replace('file://', '') : uri,
-        name: `audio_${Date.now()}.m4a`,
-        type: 'audio/m4a',
-      });
+      formData.append('fichier', { uri: Platform.OS === 'ios' ? uri.replace('file://', '') : uri, name: `audio_${Date.now()}.m4a`, type: 'audio/m4a' });
       const uploadRes = await api.post('/upload', formData, { headers: { 'Content-Type': 'multipart/form-data' }, timeout: 60000 });
-      const { data } = await api.post(`/conversations/${id}/messages`, {
-        type: 'audio',
-        file_url: uploadRes.data.url,
-        file_name: 'Message vocal',
-      });
+      const { data } = await api.post(`/conversations/${id}/messages`, { type: 'audio', file_url: uploadRes.data.url, file_name: 'Message vocal' });
       saveMessagesToLocal([data]);
-    } catch (e) {
-      Alert.alert('Erreur', "Impossible d'envoyer le message vocal.");
-    } finally { setUploading(false); }
+    } catch (e) { Alert.alert('Erreur', "Impossible d'envoyer le message vocal."); } finally { setUploading(false); }
   };
 
   const isRead = (m) => Object.entries(reads).some(([uid, at]) => uid !== user.id && new Date(at) >= new Date(m.created_at));
   const pay = async (pin) => { setBusy(true); setPinErr(''); try { await api.post(`/wallet/requests/${payFor.meta.request_id}/pay`, { pin }); setPayFor(null); } catch (e) { setPinErr(errMsg(e)); } finally { setBusy(false); } };
   const decline = (m) => Alert.alert('Refuser la demande ?', fcfa(m.meta.amount), [{ text: 'Non', style: 'cancel' }, { text: 'Refuser', style: 'destructive', onPress: () => api.post(`/wallet/requests/${m.meta.request_id}/decline`).catch((e) => Alert.alert('Erreur', errMsg(e))) }]);
-  const toggleReaction = (m, emoji) => { setReactions((p) => { const next = { ...p }; if (next[m.id] === emoji) delete next[m.id]; else next[m.id] = emoji; return next; }); };
-  const deleteMessage = (m) => { Alert.alert('Supprimer le message ?', 'Cette action est définitive.', [{ text: 'Annuler', style: 'cancel' }, { text: 'Supprimer', style: 'destructive', onPress: async () => { try { await api.delete(`/conversations/${id}/messages/${m.id}`); setMsgs((p) => p.filter((x) => x.id !== m.id)); } catch (e) { Alert.alert('Erreur', errMsg(e)); } } }]); };
-  const buildActions = (d) => { const m = d.m; const list = []; list.push({ label: 'Partager', icon: 'share-outline', onPress: () => { const content = m.body || (m.file_url ? SERVER_URL + m.file_url : ''); if (content) Share.share({ message: content }).catch(() => {}); } }); list.push({ label: 'Infos', icon: 'information-circle-outline', onPress: () => Alert.alert('Infos du message', 'Envoyé le ' + fullDate(m.created_at) + (d.mine ? '\n' + (isRead(m) ? 'Lu' : 'Envoyé') : '')) }); if (d.mine) list.push({ label: 'Supprimer', icon: 'trash-outline', destructive: true, onPress: () => deleteMessage(m) }); return list; };
+  
+  const toggleReaction = async (m, emoji) => {
+    try {
+      const myCurrent = (m.reactions || []).find((r) => r.user_id === user.id);
+      const newEmoji = myCurrent?.emoji === emoji ? null : emoji;
+      await api.post(`/conversations/${id}/messages/${m.id}/react`, { emoji: newEmoji });
+    } catch (e) { Alert.alert('Erreur', "Impossible d'ajouter la réaction."); }
+  };
+
+  const deleteMessage = (m) => {
+    Alert.alert('Supprimer le message ?', 'Cette action est définitive.', [
+      { text: 'Annuler', style: 'cancel' },
+      { text: 'Supprimer', style: 'destructive', onPress: async () => { try { await api.delete(`/conversations/${id}/messages/${m.id}`); } catch (e) { Alert.alert('Erreur', errMsg(e)); } } },
+    ]);
+  };
+
+  const startEdit = (m) => {
+    setEditingMsg(m);
+    setText(m.body);
+  };
+
+  const buildActions = (d) => {
+    const m = d.m;
+    const list = [];
+    list.push({ label: 'Partager', icon: 'share-outline', onPress: () => { const content = m.body || (m.file_url ? SERVER_URL + m.file_url : ''); if (content) Share.share({ message: content }).catch(() => {}); } });
+    list.push({ label: 'Infos', icon: 'information-circle-outline', onPress: () => Alert.alert('Infos du message', 'Envoyé le ' + fullDate(m.created_at) + (d.mine ? '\n' + (isRead(m) ? 'Lu' : 'Envoyé') : '')) });
+    
+    if (d.mine) {
+      if (m.type === 'text') {
+        list.push({ label: 'Modifier', icon: 'pencil', onPress: () => startEdit(m) });
+      }
+      list.push({ label: 'Supprimer', icon: 'trash-outline', destructive: true, onPress: () => deleteMessage(m) });
+    }
+    return list;
+  };
 
   const hasText = !!text.trim();
 
@@ -566,14 +619,23 @@ export default function ChatScreen({ route, navigation }) {
     return (
       <View style={{ marginTop: first && !showDay ? 7 : 0 }}>
         {showDay ? <DaySeparator date={item.created_at} t={t} /> : null}
-        <Bubble m={item} mine={item.sender_id === user.id} isGroup={isGroup} read={isRead(item)} first={first} last={last} colors={colors} t={t} peerName={peerName} reaction={reactions[item.id]} onLongPress={setMenu} onOpenImage={setViewer} onPay={(m) => { setPinErr(''); setPayFor(m); }} onDecline={decline} />
+        <Bubble m={item} mine={item.sender_id === user.id} isGroup={isGroup} read={isRead(item)} first={first} last={last} colors={colors} t={t} peerName={peerName} reaction={null} onLongPress={setMenu} onOpenImage={setViewer} onPay={(m) => { setPinErr(''); setPayFor(m); }} onDecline={decline} />
       </View>
     );
   };
 
   return (
     <KeyboardAvoidingView style={{ flex: 1, backgroundColor: t.chatBg }} behavior="padding" keyboardVerticalOffset={headerHeight}>
-      <FlatList inverted data={msgs} keyExtractor={(m) => m.id} extraData={reactions} contentContainerStyle={{ paddingVertical: 8 }} keyboardShouldPersistTaps="handled" renderItem={renderItem} />
+      <FlatList inverted data={msgs} keyExtractor={(m) => m.id} extraData={msgs} contentContainerStyle={{ paddingVertical: 8 }} keyboardShouldPersistTaps="handled" renderItem={renderItem} />
+
+      {/* Bandeau mode édition */}
+      {editingMsg && (
+        <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: t.bar, padding: 10, borderTopWidth: 1, borderTopColor: t.divider }}>
+          <Ionicons name="pencil" size={20} color={colors.primary} style={{ marginRight: 10 }} />
+          <Text style={{ flex: 1, color: t.text }} numberOfLines={1}>Modifier : {editingMsg.body}</Text>
+          <TouchableOpacity onPress={() => { setEditingMsg(null); setText(''); }}><Ionicons name="close-circle" size={24} color={t.meta} /></TouchableOpacity>
+        </View>
+      )}
 
       {showAttach && (
         <View style={{ flexDirection: 'row', paddingVertical: 18, paddingHorizontal: 24, backgroundColor: t.bar, borderTopWidth: 1, borderTopColor: t.divider }}>
@@ -600,7 +662,7 @@ export default function ChatScreen({ route, navigation }) {
 
         {hasText || isRecording ? (
           <TouchableOpacity onPress={isRecording ? () => stopRecording(false) : send} disabled={uploading} style={{ marginLeft: 8, width: 44, height: 44, borderRadius: 22, backgroundColor: colors.primary, alignItems: 'center', justifyContent: 'center', opacity: uploading ? 0.5 : 1, shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.15, shadowRadius: 2, elevation: 2 }}>
-            <Ionicons name="send" size={19} color="#fff" style={{ marginLeft: 2 }} />
+            <Ionicons name={editingMsg ? 'checkmark' : 'send'} size={19} color="#fff" style={{ marginLeft: editingMsg ? 0 : 2 }} />
           </TouchableOpacity>
         ) : (
           <TouchableOpacity onPress={startRecording} disabled={uploading} style={{ marginLeft: 8, width: 44, height: 44, borderRadius: 22, backgroundColor: colors.primary, alignItems: 'center', justifyContent: 'center', opacity: uploading ? 0.5 : 1, shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.15, shadowRadius: 2, elevation: 2 }}>
@@ -609,7 +671,7 @@ export default function ChatScreen({ route, navigation }) {
         )}
       </View>
 
-      <MessageMenu data={menu} onClose={() => setMenu(null)} onReact={toggleReaction} currentReaction={menu ? reactions[menu.m.id] : null} actions={menu ? buildActions(menu) : []} bubbleProps={{ isGroup, read: menu ? isRead(menu.m) : false, colors, t, peerName }} dark={dark} t={t} />
+      <MessageMenu data={menu} onClose={() => setMenu(null)} onReact={toggleReaction} currentReaction={menu ? (menu.m.reactions || []).find((r) => r.user_id === user.id)?.emoji : null} actions={menu ? buildActions(menu) : []} bubbleProps={{ isGroup, read: menu ? isRead(menu.m) : false, colors, t, peerName }} dark={dark} t={t} />
       <ImageViewer image={viewer} onClose={() => setViewer(null)} />
       <MoneyModal visible={!!money} mode={money} onClose={() => setMoney(null)} conversationId={id} peerUsername={peerUsername} peerName={peerName} />
       <PinModal visible={!!payFor} loading={busy} error={pinErr} onCancel={() => setPayFor(null)} onSubmit={pay} title={`Payer ${payFor ? fcfa(payFor.meta.amount) : ''}`} />

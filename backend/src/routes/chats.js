@@ -207,4 +207,57 @@ r.put('/:id/info', async (req, res) => {
   res.json({ ok: true, name: name.trim() });
 });
 
+// Réagir à un message
+r.post('/:id/messages/:msgId/react', async (req, res) => {
+  const { id, msgId } = req.params;
+  const { emoji } = req.body;
+  
+  // Si l'emoji est null/vide, on supprime la réaction (toggle off)
+  if (!emoji) {
+    await db.query('DELETE FROM message_reactions WHERE message_id=$1 AND user_id=$2', [msgId, req.userId]);
+    await broadcast(req.app.get('io'), id, 'message:reaction', { message_id: msgId, user_id: req.userId, emoji: null });
+    return res.json({ ok: true });
+  }
+
+  await db.query(
+    `INSERT INTO message_reactions(message_id, user_id, emoji) VALUES($1, $2, $3)
+     ON CONFLICT (message_id, user_id) DO UPDATE SET emoji=EXCLUDED.emoji`,
+    [msgId, req.userId, emoji]
+  );
+  
+  await broadcast(req.app.get('io'), id, 'message:reaction', { message_id: msgId, user_id: req.userId, emoji });
+  res.json({ ok: true });
+});
+
+// Modifier un message
+r.put('/:id/messages/:msgId', async (req, res) => {
+  const { id, msgId } = req.params;
+  const { body } = req.body;
+  if (!body || !body.trim()) throw new AppError('Message invalide');
+
+  const { rowCount } = await db.query(
+    'UPDATE messages SET body=$1 WHERE id=$2 AND sender_id=$3',
+    [body.trim(), msgId, req.userId]
+  );
+  if (rowCount === 0) throw new AppError('Message introuvable ou non autorisé', 403);
+  
+  // On récupère le message mis à jour pour le renvoyer aux clients
+  const msg = (await db.query('SELECT * FROM messages WHERE id=$1', [msgId])).rows[0];
+  await broadcast(req.app.get('io'), id, 'message:update', msg);
+  res.json(msg);
+});
+
+// Supprimer un message
+r.delete('/:id/messages/:msgId', async (req, res) => {
+  const { id, msgId } = req.params;
+  const { rowCount } = await db.query(
+    'DELETE FROM messages WHERE id=$1 AND sender_id=$2',
+    [msgId, req.userId]
+  );
+  if (rowCount === 0) throw new AppError('Message introuvable ou non autorisé', 403);
+  
+  await broadcast(req.app.get('io'), id, 'message:delete', { id: msgId });
+  res.json({ ok: true });
+});
+
 module.exports = r;

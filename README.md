@@ -1,4 +1,4 @@
-# ABYSS — messagerie + portefeuille interne (FCFA)
+# Movo — messagerie + portefeuille interne (FCFA)
 
 Stack : React Native (Expo) · Node.js (Express + Socket.io) · PostgreSQL
 

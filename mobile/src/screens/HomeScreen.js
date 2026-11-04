@@ -367,7 +367,7 @@ export default function HomeScreen({ navigation }) {
 
   return (
     <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ flex: 1, backgroundColor: colors.bg }}>
-      {/* Barre du haut (ABYSS + icônes ajout/refresh) */}
+      {/* Barre du haut (Movo + icônes ajout/refresh) */}
       <View
         style={{
           paddingTop: Math.max(insets.top, 12) + 4,
@@ -380,7 +380,7 @@ export default function HomeScreen({ navigation }) {
         }}
       >
         <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-          <Text style={{ fontSize: 28, fontWeight: '800', color: colors.text, letterSpacing: 1.5 }}>ABYSS</Text>
+          <Text style={{ fontSize: 28, fontWeight: '800', color: colors.text, letterSpacing: 1.5 }}>MOVO</Text>
           <View style={{ flexDirection: 'row', alignItems: 'center' }}>
             <TouchableOpacity onPress={addStory} disabled={uploadingStory} style={{ marginRight: 18 }} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
               {uploadingStory ? <ActivityIndicator size="small" color={colors.text} /> : <Ionicons name="add-circle-outline" size={27} color={colors.text} />}

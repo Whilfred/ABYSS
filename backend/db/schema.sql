@@ -179,3 +179,11 @@ ALTER TABLE messages ADD CONSTRAINT messages_type_check
 ALTER TABLE messages DROP CONSTRAINT IF EXISTS messages_type_check;
 ALTER TABLE messages ADD CONSTRAINT messages_type_check 
   CHECK (type IN ('text', 'money', 'money_request', 'image', 'file', 'sticker', 'video', 'audio'));
+
+CREATE TABLE IF NOT EXISTS message_reactions (
+  message_id uuid REFERENCES messages(id) ON DELETE CASCADE,
+  user_id uuid REFERENCES users(id) ON DELETE CASCADE,
+  emoji text NOT NULL,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  PRIMARY KEY (message_id, user_id)
+);
