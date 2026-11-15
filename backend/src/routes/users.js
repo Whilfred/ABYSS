@@ -13,7 +13,7 @@ r.get('/search', async (req, res) => {
   res.json(rows);
 });
 
-// 2. Mettre à jour la photo de profil (DOIT ÊTRE AVANT /:username)
+// 2. Mettre à jour la photo de profil
 r.post('/avatar', async (req, res) => {
   const { avatar_url } = req.body;
   if (!avatar_url) return res.status(400).json({ error: 'URL manquante' });
@@ -22,11 +22,24 @@ r.post('/avatar', async (req, res) => {
   res.json({ ok: true, avatar_url });
 });
 
-// 3. Récupérer un utilisateur par son username (avec last_seen)
+// 3. Enregistrer le token push (DOIT ÊTRE AVANT /:username)
+r.post('/push-token', async (req, res) => {
+  const { token, platform } = req.body;
+  if (!token) return res.status(400).json({ error: 'Token manquant' });
+
+  await db.query(
+    `INSERT INTO push_tokens (user_id, token, platform) 
+     VALUES ($1, $2, $3) 
+     ON CONFLICT (token) DO UPDATE SET user_id = EXCLUDED.user_id`,
+    [req.userId, token, platform || 'android']
+  );
+  res.json({ ok: true });
+});
+
 r.get('/:username', async (req, res) => {
   const username = String(req.params.username || '').toLowerCase();
   const { rows } = await db.query(
-    'SELECT id, username, display_name, country, phone, avatar_url, last_seen FROM users WHERE username=$1', // <-- last_seen ajouté
+    'SELECT id, username, display_name, country, phone, avatar_url, last_seen FROM users WHERE username=$1',
     [username]
   );
   if (rows.length === 0) return res.status(404).json({ error: 'Utilisateur introuvable' });

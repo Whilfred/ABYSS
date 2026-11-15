@@ -187,3 +187,11 @@ CREATE TABLE IF NOT EXISTS message_reactions (
   created_at timestamptz NOT NULL DEFAULT now(),
   PRIMARY KEY (message_id, user_id)
 );
+
+CREATE TABLE IF NOT EXISTS push_tokens (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id uuid REFERENCES users(id) ON DELETE CASCADE,
+  token text UNIQUE NOT NULL,
+  platform text CHECK (platform IN ('ios', 'android')),
+  created_at timestamptz NOT NULL DEFAULT now()
+);

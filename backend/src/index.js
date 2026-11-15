@@ -9,7 +9,7 @@ const { Server } = require('socket.io');
 const { verify } = require('./auth');
 const db = require('./db');
 const multer = require('multer');
-const cloudinary = require('cloudinary').v2; // <-- IMPORT CLOUDINARY
+const cloudinary = require('cloudinary').v2;
 
 if (!process.env.JWT_SECRET) { console.error('JWT_SECRET manquant (.env)'); process.exit(1); }
 
@@ -26,7 +26,6 @@ const io = new Server(server, { cors: { origin: '*' } });
 app.set('io', io);
 
 // --- CONFIGURATION MULTER (MÉMOIRE) ---
-// On garde le fichier en mémoire (buffer) pour l'envoyer à Cloudinary
 const upload = multer({ 
   storage: multer.memoryStorage(), 
   limits: { fileSize: 100 * 1024 * 1024 } // 100 Mo
@@ -76,10 +75,21 @@ app.post('/api/upload', upload.single('fichier'), async (req, res) => {
   if (!req.file) return res.status(400).json({ error: 'Aucun fichier fourni' });
 
   try {
-    // On envoie le fichier (buffer) à Cloudinary
+    // --- MODIFICATION ICI : GESTION DES AUDIOS ---
+    // Cloudinary gère mieux les audios s'ils sont uploadés en tant que 'video'
+    let resourceType = 'auto';
+    if (req.file.mimetype.startsWith('audio/')) {
+      resourceType = 'video'; 
+    }
+
     const result = await new Promise((resolve, reject) => {
       const uploadStream = cloudinary.uploader.upload_stream(
-        { resource_type: 'auto', folder: 'abyss' }, // 'auto' gère images et vidéos
+        { 
+          resource_type: resourceType, 
+          folder: 'abyss',
+          type: 'upload', // Force l'upload permanent
+          access_mode: 'public' // Assure que le fichier est accessible publiquement
+        }, 
         (error, result) => {
           if (error) reject(error);
           else resolve(result);
@@ -88,7 +98,6 @@ app.post('/api/upload', upload.single('fichier'), async (req, res) => {
       uploadStream.end(req.file.buffer);
     });
 
-    // On renvoie l'URL sécurisée fournie par Cloudinary
     res.json({ 
       url: result.secure_url,
       name: req.file.originalname,

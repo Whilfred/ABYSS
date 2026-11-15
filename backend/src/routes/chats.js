@@ -3,6 +3,7 @@ const db = require('../db');
 const { requireAuth } = require('../auth');
 const { AppError } = require('../services/wallet');
 const { createMessage, broadcast, isMember } = require('../services/chat');
+const { sendPushToUser } = require('../services/push'); // <-- IMPORT DU SERVICE PUSH
 r.use(requireAuth);
 
 r.get('/', async (req, res) => {
@@ -101,7 +102,7 @@ r.post('/:id/messages', async (req, res) => {
   const meta = req.body?.meta;
 
   if (type === 'text' && (!body || body.length > 4000)) throw new AppError('Message invalide');
-  if (['image', 'file', 'sticker'].includes(type) && !file_url) throw new AppError('Fichier manquant');
+  if (['image', 'file', 'sticker', 'video', 'audio'].includes(type) && !file_url) throw new AppError('Fichier manquant');
   if (!(await isMember(db, id, req.userId))) throw new AppError('Accès refusé', 403);
 
   const blockCheck = await db.query(
@@ -123,6 +124,34 @@ r.post('/:id/messages', async (req, res) => {
   });
   
   await broadcast(req.app.get('io'), id, 'message:new', msg);
+
+  // --- NOTIFICATION PUSH ---
+  try {
+    // On récupère les infos de l'expéditeur pour la notification
+    const sender = (await db.query('SELECT display_name FROM users WHERE id=$1', [req.userId])).rows[0];
+    
+    // On récupère les autres membres de la conversation
+    const members = await db.query(
+      'SELECT user_id FROM conversation_members WHERE conversation_id=$1 AND user_id<>$2',
+      [id, req.userId]
+    );
+
+    // Pour chaque membre, on envoie une notification
+    members.rows.forEach(member => {
+      let notifBody = body;
+      if (type === 'image') notifBody = '📷 Photo';
+      else if (type === 'video') notifBody = '🎥 Vidéo';
+      else if (type === 'audio') notifBody = '🎤 Message vocal';
+      else if (type === 'file') notifBody = '📄 Document';
+      else if (type === 'money') notifBody = '💸 Transfert d\'argent';
+      
+      sendPushToUser(member.user_id, sender.display_name, notifBody, { conversationId: id });
+    });
+  } catch (err) {
+    console.error('Erreur notification push:', err);
+  }
+  // -------------------------
+
   res.json(msg);
 });
 
@@ -178,13 +207,12 @@ r.post('/:id/leave', async (req, res) => {
   res.json({ ok: true });
 });
 
-// 4. Changer la photo du groupe (NOUVEAU)
+// 4. Changer la photo du groupe
 r.post('/:id/avatar', async (req, res) => {
   const { id } = req.params;
   const { avatar_url } = req.body;
   if (!avatar_url) throw new AppError('URL manquante');
 
-  // Vérifier que l'utilisateur est le créateur du groupe
   const conv = (await db.query('SELECT created_by FROM conversations WHERE id=$1', [id])).rows[0];
   if (!conv) throw new AppError('Groupe introuvable', 404);
   if (conv.created_by !== req.userId) throw new AppError('Seul le créateur peut modifier la photo du groupe', 403);
@@ -193,7 +221,7 @@ r.post('/:id/avatar', async (req, res) => {
   res.json({ ok: true, avatar_url });
 });
 
-// 5. Modifier le nom du groupe (NOUVEAU)
+// 5. Modifier le nom du groupe
 r.put('/:id/info', async (req, res) => {
   const { id } = req.params;
   const { name } = req.body;
@@ -212,7 +240,6 @@ r.post('/:id/messages/:msgId/react', async (req, res) => {
   const { id, msgId } = req.params;
   const { emoji } = req.body;
   
-  // Si l'emoji est null/vide, on supprime la réaction (toggle off)
   if (!emoji) {
     await db.query('DELETE FROM message_reactions WHERE message_id=$1 AND user_id=$2', [msgId, req.userId]);
     await broadcast(req.app.get('io'), id, 'message:reaction', { message_id: msgId, user_id: req.userId, emoji: null });
@@ -241,7 +268,6 @@ r.put('/:id/messages/:msgId', async (req, res) => {
   );
   if (rowCount === 0) throw new AppError('Message introuvable ou non autorisé', 403);
   
-  // On récupère le message mis à jour pour le renvoyer aux clients
   const msg = (await db.query('SELECT * FROM messages WHERE id=$1', [msgId])).rows[0];
   await broadcast(req.app.get('io'), id, 'message:update', msg);
   res.json(msg);
