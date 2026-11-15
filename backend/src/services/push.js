@@ -1,8 +1,9 @@
-const { Expo } = require('expo-server-sdk');
+const expoServerSdk = require('expo-server-sdk');
+const { Expo } = expoServerSdk;
 const db = require('../db');
 
-// Créer un client Expo
 const expo = new Expo();
+
 
 async function sendPushToUser(userId, title, body, data = {}) {
   try {
