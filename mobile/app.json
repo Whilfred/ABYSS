@@ -13,6 +13,7 @@
     },
     "android": {
       "package": "com.whilfred.abyss",
+      "googleServicesFile": "./google-services.json",
       "adaptiveIcon": {
         "foregroundImage": "./assets/icon.png",
         "backgroundColor": "#1E5BFF"
@@ -33,7 +34,8 @@
       "expo-video",
       "expo-sqlite",
       "expo-audio",
-      "expo-asset"
+      "expo-asset",
+      "expo-notifications"
     ],
     "extra": {
       "eas": {

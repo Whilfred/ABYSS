@@ -1,14 +1,17 @@
-import React from 'react';
-import { ActivityIndicator, View } from 'react-native';
+import React, { useEffect } from 'react';
+import { ActivityIndicator, View, Platform } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { NavigationContainer, DefaultTheme, DarkTheme } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { Ionicons } from '@expo/vector-icons';
-import { useSafeAreaInsets } from 'react-native-safe-area-context'; // <-- IMPORT SAFE AREA
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import * as Notifications from 'expo-notifications';
+import Constants from 'expo-constants';
 import { AuthProvider, useAuth } from './src/auth';
 import { ThemeProvider, useTheme } from './src/ThemeContext'; 
 import { initDB } from './src/db';
+import { api } from './src/api';
 import LoginScreen from './src/screens/LoginScreen';
 import RegisterScreen from './src/screens/RegisterScreen';
 import HomeScreen from './src/screens/HomeScreen';
@@ -25,12 +28,55 @@ import ProfileScreen from './src/screens/ProfileScreen';
 import SettingsScreen from './src/screens/SettingsScreen';
 import StoryViewerScreen from './src/screens/StoryViewerScreen';
 
+// Configuration de l'affichage des notifications
+Notifications.setNotificationHandler({
+  handleNotification: async () => ({
+    shouldShowAlert: true,
+    shouldPlaySound: true,
+    shouldSetBadge: false,
+  }),
+});
+
 const Stack = createNativeStackNavigator();
 const Tab = createBottomTabNavigator();
 
+// Fonction pour enregistrer le token push
+async function registerForPushNotifications() {
+  try {
+    const { status: existingStatus } = await Notifications.getPermissionsAsync();
+    let finalStatus = existingStatus;
+    
+    if (existingStatus !== 'granted') {
+      const { status } = await Notifications.requestPermissionsAsync();
+      finalStatus = status;
+    }
+    
+    if (finalStatus !== 'granted') {
+      console.log('Permission de notification refusée');
+      return;
+    }
+
+    if (Platform.OS === 'android') {
+      await Notifications.setNotificationChannelAsync('default', {
+        name: 'default',
+        importance: Notifications.AndroidImportance.MAX,
+      });
+    }
+
+    const projectId = Constants.expoConfig?.extra?.eas?.projectId;
+    const token = (await Notifications.getExpoPushTokenAsync({ projectId })).data;
+    
+    // Envoi au backend
+    await api.post('/users/push-token', { token, platform: Platform.OS });
+    console.log('Token push enregistré:', token);
+  } catch (error) {
+    console.log('Erreur lors de l\'enregistrement du token:', error);
+  }
+}
+
 function Tabs() {
   const { colors } = useTheme(); 
-  const insets = useSafeAreaInsets(); // <-- RÉCUPÉRATION DES MARGES
+  const insets = useSafeAreaInsets();
   
   return (
     <Tab.Navigator screenOptions={({ route }) => ({
@@ -39,8 +85,8 @@ function Tabs() {
       tabBarStyle: { 
         backgroundColor: colors.surface, 
         borderTopColor: colors.border,
-        height: 60 + insets.bottom, // <-- AJOUT HAUTEUR
-        paddingBottom: insets.bottom, // <-- AJOUT PADDING
+        height: 60 + insets.bottom,
+        paddingBottom: insets.bottom,
       },
       headerStyle: { backgroundColor: colors.surface },
       headerTitleStyle: { fontWeight: '800', color: colors.primary },
@@ -65,6 +111,13 @@ function Tabs() {
 function Root() {
   const { user, loading } = useAuth();
   const { colors, isDark } = useTheme(); 
+
+  // Enregistrer le token push dès que l'utilisateur est connecté
+  useEffect(() => {
+    if (user) {
+      registerForPushNotifications();
+    }
+  }, [user]);
   
   if (loading) return (
     <View style={{ flex: 1, justifyContent: 'center', backgroundColor: colors.bg }}>
