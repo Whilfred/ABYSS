@@ -1,7 +1,7 @@
 {
   "expo": {
     "name": "MOVO",
-    "slug": "movo",
+    "slug": "abyss",
     "version": "1.1.0",
     "orientation": "portrait",
     "userInterfaceStyle": "light",
@@ -9,10 +9,10 @@
     "icon": "./assets/icon.png",
     "ios": {
       "supportsTablet": false,
-      "bundleIdentifier": "com.whilfred.movo"
+      "bundleIdentifier": "com.whilfred.abyss"
     },
     "android": {
-      "package": "com.whilfred.movo",
+      "package": "com.whilfred.abyss",
       "adaptiveIcon": {
         "foregroundImage": "./assets/icon.png",
         "backgroundColor": "#1E5BFF"
@@ -32,7 +32,8 @@
       "expo-sharing",
       "expo-video",
       "expo-sqlite",
-      "expo-audio"
+      "expo-audio",
+      "expo-asset"
     ],
     "extra": {
       "eas": {

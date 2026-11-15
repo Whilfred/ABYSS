@@ -479,7 +479,6 @@ export default function ChatScreen({ route, navigation }) {
     if (!body) return; 
     
     if (editingMsg) {
-      // Mode Édition
       try {
         await api.put(`/conversations/${id}/messages/${editingMsg.id}`, { body });
         setEditingMsg(null);
@@ -488,7 +487,6 @@ export default function ChatScreen({ route, navigation }) {
       return;
     }
 
-    // Mode Envoi
     setText(''); 
     try { const { data } = await api.post(`/conversations/${id}/messages`, { body, type: 'text' }); saveMessagesToLocal([data]); } catch (e) { setText(body); Alert.alert('Erreur', "Impossible d'envoyer le message."); } 
   };
@@ -530,7 +528,6 @@ export default function ChatScreen({ route, navigation }) {
     } catch (e) { Alert.alert('Erreur', "Impossible d'envoyer le fichier. Vérifiez votre connexion."); } finally { setUploading(false); }
   };
 
-  // --- AUDIO ---
   const startRecording = async () => {
     try {
       if (audioRecorder.isRecording) await audioRecorder.stop();
@@ -628,7 +625,6 @@ export default function ChatScreen({ route, navigation }) {
     <KeyboardAvoidingView style={{ flex: 1, backgroundColor: t.chatBg }} behavior="padding" keyboardVerticalOffset={headerHeight}>
       <FlatList inverted data={msgs} keyExtractor={(m) => m.id} extraData={msgs} contentContainerStyle={{ paddingVertical: 8 }} keyboardShouldPersistTaps="handled" renderItem={renderItem} />
 
-      {/* Bandeau mode édition */}
       {editingMsg && (
         <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: t.bar, padding: 10, borderTopWidth: 1, borderTopColor: t.divider }}>
           <Ionicons name="pencil" size={20} color={colors.primary} style={{ marginRight: 10 }} />
@@ -646,29 +642,38 @@ export default function ChatScreen({ route, navigation }) {
       )}
 
       <View style={{ flexDirection: 'row', alignItems: 'flex-end', paddingHorizontal: 8, paddingTop: 6, paddingBottom: kbOpen ? 8 : Math.max(insets.bottom, 8), backgroundColor: showAttach ? t.bar : 'transparent' }}>
-        {isRecording ? (
-          <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center', backgroundColor: t.input, borderRadius: 22, height: 44, paddingHorizontal: 16 }}>
-            <View style={{ width: 10, height: 10, borderRadius: 5, backgroundColor: '#E53935', marginRight: 10 }} />
-            <Text style={{ color: t.text, flex: 1, fontSize: 16 }}>Enregistrement... {recordingDuration}s</Text>
-            <TouchableOpacity onPress={() => stopRecording(true)} style={{ padding: 8 }}><Ionicons name="trash" size={20} color={t.meta} /></TouchableOpacity>
-            <TouchableOpacity onPress={() => stopRecording(false)} style={{ padding: 8 }}><Ionicons name="send" size={20} color={colors.primary} /></TouchableOpacity>
-          </View>
-        ) : (
-          <View style={{ flex: 1, flexDirection: 'row', alignItems: 'flex-end', backgroundColor: t.input, borderRadius: 22, minHeight: 44, shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.1, shadowRadius: 2, elevation: 2 }}>
-            <TextInput value={text} onChangeText={setText} placeholder={uploading ? 'Envoi en cours…' : 'Message'} placeholderTextColor={t.meta} multiline editable={!uploading} style={{ flex: 1, paddingLeft: 16, paddingRight: 4, paddingTop: Platform.OS === 'ios' ? 12 : 10, paddingBottom: Platform.OS === 'ios' ? 12 : 10, maxHeight: 120, fontSize: 16, color: t.text }} />
-            <TouchableOpacity onPress={() => setShowAttach(!showAttach)} style={{ height: 44, width: 44, alignItems: 'center', justifyContent: 'center' }}><Ionicons name={showAttach ? 'close' : 'attach'} size={showAttach ? 26 : 28} color={t.meta} style={showAttach ? null : { transform: [{ rotate: '45deg' }] }} /></TouchableOpacity>
-          </View>
-        )}
+        <View style={{ flex: 1, flexDirection: 'row', alignItems: 'flex-end' }}>
+          {isRecording ? (
+            <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center', backgroundColor: t.input, borderRadius: 22, height: 44, paddingHorizontal: 16 }}>
+              <View style={{ width: 10, height: 10, borderRadius: 5, backgroundColor: '#E53935', marginRight: 10 }} />
+              <Text style={{ color: t.text, flex: 1, fontSize: 16 }}>Enregistrement... {recordingDuration}s</Text>
+              <TouchableOpacity onPress={() => stopRecording(true)} style={{ padding: 8 }}><Ionicons name="trash" size={20} color={t.meta} /></TouchableOpacity>
+            </View>
+          ) : (
+            <View style={{ flex: 1, flexDirection: 'row', alignItems: 'flex-end', backgroundColor: t.input, borderRadius: 22, minHeight: 44, shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.1, shadowRadius: 2, elevation: 2 }}>
+              <TextInput value={text} onChangeText={setText} placeholder={uploading ? 'Envoi en cours…' : 'Message'} placeholderTextColor={t.meta} multiline editable={!uploading} style={{ flex: 1, paddingLeft: 16, paddingRight: 4, paddingTop: Platform.OS === 'ios' ? 12 : 10, paddingBottom: Platform.OS === 'ios' ? 12 : 10, maxHeight: 120, fontSize: 16, color: t.text }} />
+              <TouchableOpacity onPress={() => setShowAttach(!showAttach)} style={{ height: 44, width: 44, alignItems: 'center', justifyContent: 'center' }}>
+                <Ionicons name={showAttach ? 'close' : 'attach'} size={showAttach ? 26 : 28} color={t.meta} style={showAttach ? null : { transform: [{ rotate: '45deg' }] }} />
+              </TouchableOpacity>
+            </View>
+          )}
+        </View>
 
-        {hasText || isRecording ? (
-          <TouchableOpacity onPress={isRecording ? () => stopRecording(false) : send} disabled={uploading} style={{ marginLeft: 8, width: 44, height: 44, borderRadius: 22, backgroundColor: colors.primary, alignItems: 'center', justifyContent: 'center', opacity: uploading ? 0.5 : 1, shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.15, shadowRadius: 2, elevation: 2 }}>
-            <Ionicons name={editingMsg ? 'checkmark' : 'send'} size={19} color="#fff" style={{ marginLeft: editingMsg ? 0 : 2 }} />
-          </TouchableOpacity>
-        ) : (
-          <TouchableOpacity onPress={startRecording} disabled={uploading} style={{ marginLeft: 8, width: 44, height: 44, borderRadius: 22, backgroundColor: colors.primary, alignItems: 'center', justifyContent: 'center', opacity: uploading ? 0.5 : 1, shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.15, shadowRadius: 2, elevation: 2 }}>
-            <Ionicons name="mic" size={22} color="#fff" />
-          </TouchableOpacity>
-        )}
+        <View style={{ marginLeft: 8, width: 44, height: 44, justifyContent: 'center', alignItems: 'center' }}>
+          {isRecording ? (
+            <TouchableOpacity onPress={() => stopRecording(false)} style={{ width: 44, height: 44, borderRadius: 22, backgroundColor: colors.primary, alignItems: 'center', justifyContent: 'center', shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.15, shadowRadius: 2, elevation: 2 }}>
+              <Ionicons name="send" size={19} color="#fff" style={{ marginLeft: 2 }} />
+            </TouchableOpacity>
+          ) : hasText ? (
+            <TouchableOpacity onPress={send} disabled={uploading} style={{ width: 44, height: 44, borderRadius: 22, backgroundColor: colors.primary, alignItems: 'center', justifyContent: 'center', opacity: uploading ? 0.5 : 1, shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.15, shadowRadius: 2, elevation: 2 }}>
+              <Ionicons name={editingMsg ? 'checkmark' : 'send'} size={19} color="#fff" style={{ marginLeft: editingMsg ? 0 : 2 }} />
+            </TouchableOpacity>
+          ) : (
+            <TouchableOpacity onPress={startRecording} disabled={uploading} style={{ width: 44, height: 44, borderRadius: 22, backgroundColor: colors.primary, alignItems: 'center', justifyContent: 'center', opacity: uploading ? 0.5 : 1, shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.15, shadowRadius: 2, elevation: 2 }}>
+              <Ionicons name="mic" size={22} color="#fff" />
+            </TouchableOpacity>
+          )}
+        </View>
       </View>
 
       <MessageMenu data={menu} onClose={() => setMenu(null)} onReact={toggleReaction} currentReaction={menu ? (menu.m.reactions || []).find((r) => r.user_id === user.id)?.emoji : null} actions={menu ? buildActions(menu) : []} bubbleProps={{ isGroup, read: menu ? isRead(menu.m) : false, colors, t, peerName }} dark={dark} t={t} />
