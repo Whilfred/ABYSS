@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "5520304236",
+    "project_id": "movo-948aa",
+    "storage_bucket": "movo-948aa.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:5520304236:android:74964aeafcb9c457c91049",
+        "android_client_info": {
+          "package_name": "com.whilfred.abyss"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCfdfDe1ShfBTxt_sfrd5QWxzCQE_5ouTM"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
