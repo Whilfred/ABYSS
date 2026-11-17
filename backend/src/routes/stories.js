@@ -3,7 +3,7 @@ const db = require('../db');
 const { requireAuth } = require('../auth');
 const { AppError } = require('../services/wallet');
 const { createMessage, broadcast } = require('../services/chat');
-const { sendPushToUser } = require('../services/push'); // <-- IMPORT
+const { sendPushToUser } = require('../services/push');
 const multer = require('multer');
 const cloudinary = require('cloudinary').v2;
 
@@ -22,7 +22,6 @@ r.post('/', upload.single('media'), async (req, res) => {
   if (!req.file) throw new AppError('Fichier manquant');
   
   try {
-    // On envoie le fichier à Cloudinary
     const result = await new Promise((resolve, reject) => {
       const uploadStream = cloudinary.uploader.upload_stream(
         { resource_type: 'auto', folder: 'abyss_stories' }, 
@@ -42,18 +41,25 @@ r.post('/', upload.single('media'), async (req, res) => {
       [req.userId, mediaUrl, mediaType]
     );
     
-    // --- NOTIFICATION PUSH ---
+    // --- NOTIFICATION PUSH (AVEC LOGS) ---
+    console.log('>>> DÉBUT NOTIFICATION STORY');
     try {
       const sender = (await db.query('SELECT display_name FROM users WHERE id=$1', [req.userId])).rows[0];
       const others = await db.query('SELECT id FROM users WHERE id<>$1', [req.userId]);
       
+      console.log(`>>> ${others.rowCount} utilisateurs à notifier par ${sender.display_name}`);
+      
       others.rows.forEach(u => {
-        sendPushToUser(u.id, sender.display_name, 'a publié une nouvelle story !', { type: 'story' });
+        console.log(`>>> Envoi à l'utilisateur ${u.id}`);
+        sendPushToUser(u.id, sender.display_name, 'a publié une nouvelle story !', { type: 'story' })
+          .then(() => console.log(`>>> Notification envoyée avec succès à ${u.id}`))
+          .catch(err => console.error(`>>> Erreur d'envoi à ${u.id}:`, err));
       });
     } catch (err) {
-      console.error('Erreur notification story:', err);
+      console.error('>>> Erreur notification story:', err);
     }
-    // -------------------------
+    console.log('>>> FIN NOTIFICATION STORY');
+    // ---------------------------------------
 
     res.json(rows[0]);
   } catch (error) {
@@ -106,7 +112,7 @@ r.get('/:id/views', async (req, res) => {
   res.json(rows);
 });
 
-// 6. Réagir à une story (avec notification Socket.io et création de message)
+// 6. Réagir à une story
 r.post('/:id/react', async (req, res) => {
   const { id } = req.params;
   const { emoji } = req.body;
