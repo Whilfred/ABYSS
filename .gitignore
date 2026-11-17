@@ -55,3 +55,4 @@ Thumbs.db
 *.sw?
 
 backend/uploads/
+mobile/*firebase-adminsdk*.json
