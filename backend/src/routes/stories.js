@@ -3,6 +3,7 @@ const db = require('../db');
 const { requireAuth } = require('../auth');
 const { AppError } = require('../services/wallet');
 const { createMessage, broadcast } = require('../services/chat');
+const { sendPushToUser } = require('../services/push'); // <-- IMPORT
 const multer = require('multer');
 const cloudinary = require('cloudinary').v2;
 
@@ -16,7 +17,6 @@ const upload = multer({
 
 // 1. Créer une story (avec upload Cloudinary)
 r.post('/', upload.single('media'), async (req, res) => {
-  // --- LOG DE VÉRIFICATION ---
   console.log('FICHIER REÇU:', req.file ? `${req.file.size} octets, type: ${req.file.mimetype}` : 'AUCUN FICHIER');
   
   if (!req.file) throw new AppError('Fichier manquant');
@@ -42,9 +42,21 @@ r.post('/', upload.single('media'), async (req, res) => {
       [req.userId, mediaUrl, mediaType]
     );
     
+    // --- NOTIFICATION PUSH ---
+    try {
+      const sender = (await db.query('SELECT display_name FROM users WHERE id=$1', [req.userId])).rows[0];
+      const others = await db.query('SELECT id FROM users WHERE id<>$1', [req.userId]);
+      
+      others.rows.forEach(u => {
+        sendPushToUser(u.id, sender.display_name, 'a publié une nouvelle story !', { type: 'story' });
+      });
+    } catch (err) {
+      console.error('Erreur notification story:', err);
+    }
+    // -------------------------
+
     res.json(rows[0]);
   } catch (error) {
-    // --- LOG D'ERREUR DÉTAILLÉ ---
     console.error('ERREUR CLOUDINARY DÉTAIL:', error);
     throw new AppError("Erreur lors de l'upload de la story");
   }
